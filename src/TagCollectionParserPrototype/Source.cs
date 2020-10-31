@@ -12,8 +12,8 @@ namespace TagCollectionParserPrototype
     {
         static void Main(string[] args)
         {
-            IPhysicsModelConfig config = new MCCReachPhysicsModelConfig();
-            string tagFilePath = @"C:\Users\gurten\Documents\tags\reach\ff_plat_1x1.tagc";
+            IPhysicsModel config = new MCCReachPhysicsModel();
+            string tagFilePath = @"C:\Users\gurten\Documents\tags\reach\ff_ramp_2x2_steep.tagc";
             Console.WriteLine("Hello World!");
             TagContainer container;
 
@@ -34,42 +34,101 @@ namespace TagCollectionParserPrototype
             Assert.IsNotNull(tagData, "could not find main tagblock");
 
             Assert.AreEqual(1, tagData.EntryCount);
-            Assert.AreEqual(config.RootTagblockSize, tagData.EntrySize);
+            Assert.AreEqual(config.Size, tagData.EntrySize);
 
             var rigidBodyDataBlockFixup = tagData.AddressFixups.ElementAt(0);
-            Assert.AreEqual(config.RootRigidBodyTagBlockOffset + config.TagblockRefAddressOffset,
+            Assert.AreEqual(config.RigidBodyTagBlock.Address.Offset,
                 rigidBodyDataBlockFixup.WriteOffset);
 
             var rigidBodyDataBlock = container.FindDataBlock(rigidBodyDataBlockFixup.OriginalAddress);
             Assert.IsNotNull(rigidBodyDataBlock, "could not find rigidbody tagblock");
 
             Assert.AreEqual(1, rigidBodyDataBlock.EntryCount);
-            Assert.AreEqual(config.RigidBodyDataBlockSize, rigidBodyDataBlock.EntrySize);
+            Assert.AreEqual(config.RigidBodyTagBlock.Schema.Size, rigidBodyDataBlock.EntrySize);
 
         }
     }
 
-
-
-    interface IPhysicsModelConfig
-    { 
-        UInt32 RootTagblockSize { get; }
-
-        //The offset within a tagblock reference for the address where the tagblock begins.
-        UInt32 TagblockRefAddressOffset { get; }
-        UInt32 RootRigidBodyTagBlockOffset { get; }
-
-        UInt32 RigidBodyDataBlockSize { get; }
+    public interface IDataBlock
+    {
+        UInt32 Size { get; }
     }
 
-    class MCCReachPhysicsModelConfig : IPhysicsModelConfig
+    public class DataField<T>
     {
-        UInt32 IPhysicsModelConfig.RootRigidBodyTagBlockOffset => 92;
+        public DataField(UInt32 offset)
+        {
+            Offset = offset;
+            TypeStub = default(T);
+        }
+        public UInt32 Offset { protected set; get; }
 
-        UInt32 IPhysicsModelConfig.RootTagblockSize => 412;
+        public T TypeStub { get;  }
+    };
 
-        UInt32 IPhysicsModelConfig.TagblockRefAddressOffset => 4;
+    interface ITagBlockRef<SchemaT>
+    {
+        DataField<UInt32> Count { get; }
+        DataField<UInt32> Address { get; }
 
-        UInt32 IPhysicsModelConfig.RigidBodyDataBlockSize => 208;
+        SchemaT Schema { set;  get; }
+    }
+
+    public class MCCReachTagBlockRef<T> : ITagBlockRef<T>
+    {
+        public MCCReachTagBlockRef(UInt32 offsetInParent, T instance)
+        {
+            Schema = instance;
+            _offsetInParent = offsetInParent;
+        }
+
+        UInt32 _offsetInParent = 0;
+        public DataField<uint> Count => new DataField<UInt32>(_offsetInParent + 0);
+
+        public DataField<uint> Address => new DataField<UInt32>(_offsetInParent + 4);
+
+        public T Schema { get; set; }
+    }
+
+    interface IPhysicsModelRigidBodyShapeTypes
+    {
+        // Add more as needed.
+        UInt16 List { get;  }
+    }
+
+    class MCCReachPhysicsModelRigidBodyShapeTypes : IPhysicsModelRigidBodyShapeTypes
+    {
+        UInt16 IPhysicsModelRigidBodyShapeTypes.List => 0xe;
+    }
+
+
+    interface IPhysicsModelRigidBody : IDataBlock
+    {
+        DataField<float> BoundingSphereRadius { get; }
+        DataField<UInt16> ShapeTypeOffset { get; }
+
+        IPhysicsModelRigidBodyShapeTypes ShapeTypes { get;  }
+
+    }
+
+    class MCCReachPhysicsModelRigidBody : IPhysicsModelRigidBody
+    {
+        UInt32 IDataBlock.Size => 208;
+        DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius => new DataField<float>(20);
+        DataField<UInt16> IPhysicsModelRigidBody.ShapeTypeOffset => new DataField<UInt16>(168);
+        IPhysicsModelRigidBodyShapeTypes IPhysicsModelRigidBody.ShapeTypes => new MCCReachPhysicsModelRigidBodyShapeTypes();
+    }
+
+    interface IPhysicsModel : IDataBlock
+    { 
+        ITagBlockRef<IPhysicsModelRigidBody> RigidBodyTagBlock { get; }
+
+    }
+
+    class MCCReachPhysicsModel : IPhysicsModel
+    {
+        UInt32 IDataBlock.Size => 412;
+        ITagBlockRef<IPhysicsModelRigidBody> IPhysicsModel.RigidBodyTagBlock => new MCCReachTagBlockRef<IPhysicsModelRigidBody>(92, new MCCReachPhysicsModelRigidBody());
+
     }
 }
