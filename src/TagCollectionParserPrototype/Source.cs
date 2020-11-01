@@ -50,8 +50,20 @@ namespace TagCollectionParserPrototype
             IPhysicsModelPolyhedra poly = new MCCReachPhysicsModelPolyhedra();
             Assert.AreEqual(poly.AABBHalfExtents[3].Offset, 0x5c);
 
-            //TODO: remove the need for template argument ConfigConstant<bool>
-            config.RigidBodyTagBlock.Schema.ShapeIndex.WriteToStream(null, ConfigConstant<bool>.MCCReach.PhysicsModelShapeTypes.List);
+            IContext mccReachContext = new MCCReachContext();
+
+            Assert.IsNotNull(mccReachContext.Get<IPhysicsModelShapeTypes>());
+
+            var buffer = new MemoryStream((int)config.RigidBodyTagBlock.Schema.Size);
+            var bufferWriter = new EndianWriter(buffer, endianness);
+            //bufferWriter.WriteBlock(block.Data);
+
+
+            UInt16 val = mccReachContext.Get<IPhysicsModelShapeTypes>().Polyhedron.Value.Value;
+            Utils.WriteToStream(bufferWriter, config.RigidBodyTagBlock.Schema.ShapeIndex, (UInt16)val);
+
+            var x = new byte[4];
+            buffer.Read(x, (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset, 4);
         }
     }
 
@@ -64,16 +76,36 @@ namespace TagCollectionParserPrototype
 
     public class Utils
     {
-        private static Dictionary<Type, UInt32> TypeSizes = new Dictionary<Type, UInt32>()
+        private static Dictionary<Type, UInt32> _typeSizes = new Dictionary<Type, UInt32>()
         {
             { typeof(float), 4 },
             { typeof(UInt32), 4 },
             { typeof(UInt16), 2 },
         };
+
+        private static Dictionary<Type, Action<IWriter, object>> _typeWriters 
+            = new Dictionary<Type, Action<IWriter, object>>()
+        {
+            { typeof(float), (IWriter writer, object obj) => writer.WriteFloat(value: (float)obj) },
+            { typeof(UInt32), (IWriter writer, object obj) => writer.WriteUInt32(value: (UInt32)obj) },
+            { typeof(UInt16), (IWriter writer, object obj) => writer.WriteUInt16(value: (UInt16)obj) },
+        };
+
+        public static UInt32 FieldSizeBytes<T, U>(T v) where T : ITypeBox<U>
+        {
+            UInt32 size = 0;
+            if (_typeSizes.TryGetValue(typeof(U), out size))
+            {
+                return size;
+            }
+
+            throw new NotImplementedException();
+        }
+
         public static UInt32 FieldSizeBytes<T>(T v) where T : struct
         {
             UInt32 size = 0;
-            if (TypeSizes.TryGetValue(typeof(T), out size))
+            if (_typeSizes.TryGetValue(typeof(T), out size))
             {
                 return size;
             }
@@ -87,6 +119,30 @@ namespace TagCollectionParserPrototype
             // delegates that write into the stream.
             throw new NotImplementedException();
         }
+
+        //TODO: utilise this in the iterator. 
+        public static bool WriteToStream<T, U>(IWriter buffer, DataField<U> field, T value) where T : struct, ITypeBox<U>
+        {
+            return WriteToStreamImpl(buffer, field.Offset, value);
+        }
+
+        public static bool WriteToStream<T>(IWriter buffer, DataField<T> field, T value) where T : struct
+        {
+            return WriteToStreamImpl(buffer, field.Offset, value);
+        }
+
+        private static bool WriteToStreamImpl<T>(IWriter buffer, UInt32 offset, T value) where T : struct
+        {
+            buffer.SeekTo(offset);
+            UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
+            if (buffer.Length <= (writeSizeBytes + offset))
+            {
+                Utils.WriteField(buffer, value);
+            }
+            return false;
+        }
+
+
     }
 
     public interface IDataBlock
@@ -94,7 +150,7 @@ namespace TagCollectionParserPrototype
         UInt32 Size { get; }
     }
 
-    public class DataField<T> where T : struct
+    public class DataField<T> // where T : struct
     {
         public DataField(UInt32 offset)
         {
@@ -105,18 +161,6 @@ namespace TagCollectionParserPrototype
 
         public T TypeStub { get;  }
 
-
-        //TODO: utilise this in the iterator. 
-        public bool WriteToStream(IWriter buffer, T value)
-        {
-            buffer.SeekTo(Offset);
-            UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
-            if (buffer.Length <= (writeSizeBytes + Offset))
-            {
-                Utils.WriteField(buffer, value);
-            }
-            return false;
-        }
     }
 
     interface IVectorField
@@ -196,7 +240,15 @@ namespace TagCollectionParserPrototype
         public T Schema { get; set; }
     }
 
-    public struct PhysicsModelShapeType
+    public interface ITypeBox
+    { }
+
+    public interface ITypeBox<T> : ITypeBox
+    { 
+        T Value { get; }
+    }
+
+    public struct PhysicsModelShapeType : ITypeBox<UInt16>
     {
         public PhysicsModelShapeType(UInt16 value)
         {
@@ -205,15 +257,17 @@ namespace TagCollectionParserPrototype
 
         private UInt16 _value;
 
-        public static implicit operator PhysicsModelShapeType(UInt16 value)
+        public UInt16 Value { get => _value; }
+
+        /*public static implicit operator PhysicsModelShapeType(UInt16 value)
         {
             return new PhysicsModelShapeType(value);
-        }
+        }*/
     }
 
     public class ConfigConstant<T>
     {
-        private ConfigConstant(T val)
+        public ConfigConstant(T val)
         {
             Value = val;
         }
@@ -225,14 +279,42 @@ namespace TagCollectionParserPrototype
 
         public T Value { get; private set; }
 
-        public static class MCCReach
+    }
+
+    interface IContext
+    {
+        T Get<T>();
+    }
+
+    interface IPhysicsModelShapeTypes
+    {
+        //Add more as needed.
+        ConfigConstant<PhysicsModelShapeType> Polyhedron { get; }
+        ConfigConstant<PhysicsModelShapeType> List { get; }
+    }
+
+    public class MCCReachContext : IContext
+    {
+        private Dictionary<Type, object> _handlers = new Dictionary<Type, object>()
         {
-            public static class PhysicsModelShapeTypes
+            { typeof(IPhysicsModelShapeTypes), new PhysicsModelShapeTypes() },
+        };
+
+        public T Get<T>()
+        {
+            object obj = 0;
+            if (_handlers.TryGetValue(typeof(T), out obj))
             {
-                public static ConfigConstant<PhysicsModelShapeType> Polyhedron = new ConfigConstant<PhysicsModelShapeType>(4);
-                public static ConfigConstant<PhysicsModelShapeType> List = new ConfigConstant<PhysicsModelShapeType>(0xe);
+                return (T)obj;
             }
-            
+
+            throw new NotImplementedException();
+        }
+
+        public class PhysicsModelShapeTypes : IPhysicsModelShapeTypes
+        {
+            ConfigConstant<PhysicsModelShapeType> IPhysicsModelShapeTypes.Polyhedron => new ConfigConstant<PhysicsModelShapeType>(4);
+            ConfigConstant<PhysicsModelShapeType> IPhysicsModelShapeTypes.List => new ConfigConstant<PhysicsModelShapeType>(0xe);
         }
     }
 
