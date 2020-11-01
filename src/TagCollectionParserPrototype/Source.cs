@@ -49,6 +49,9 @@ namespace TagCollectionParserPrototype
 
             IPhysicsModelPolyhedra poly = new MCCReachPhysicsModelPolyhedra();
             Assert.AreEqual(poly.AABBHalfExtents[3].Offset, 0x5c);
+
+            //TODO: remove the need for template argument ConfigConstant<bool>
+            config.RigidBodyTagBlock.Schema.ShapeIndex.WriteToStream(null, ConfigConstant<bool>.MCCReach.PhysicsModelShapeTypes.List);
         }
     }
 
@@ -77,6 +80,13 @@ namespace TagCollectionParserPrototype
 
             throw new NotImplementedException();
         }
+
+        public static void WriteField<T>(IWriter buffer, T v) where T : struct
+        {
+            // TODO: implement in similar way to dictionary for type sizes, except with 
+            // delegates that write into the stream.
+            throw new NotImplementedException();
+        }
     }
 
     public interface IDataBlock
@@ -94,7 +104,20 @@ namespace TagCollectionParserPrototype
         public UInt32 Offset { protected set; get; }
 
         public T TypeStub { get;  }
-    };
+
+
+        //TODO: utilise this in the iterator. 
+        public bool WriteToStream(IWriter buffer, T value)
+        {
+            buffer.SeekTo(Offset);
+            UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
+            if (buffer.Length <= (writeSizeBytes + Offset))
+            {
+                Utils.WriteField(buffer, value);
+            }
+            return false;
+        }
+    }
 
     interface IVectorField
     {
@@ -173,29 +196,51 @@ namespace TagCollectionParserPrototype
         public T Schema { get; set; }
     }
 
-    interface IPhysicsModelRigidBodyShapeTypes
+    public struct PhysicsModelShapeType
     {
-        // Add more as needed.
-        UInt16 Polyhedron { get;  }
-        UInt16 List { get; }
+        public PhysicsModelShapeType(UInt16 value)
+        {
+            _value = value;
+        }
+
+        private UInt16 _value;
+
+        public static implicit operator PhysicsModelShapeType(UInt16 value)
+        {
+            return new PhysicsModelShapeType(value);
+        }
     }
 
-    class MCCReachPhysicsModelRigidBodyShapeTypes : IPhysicsModelRigidBodyShapeTypes
+    public class ConfigConstant<T>
     {
-        UInt16 IPhysicsModelRigidBodyShapeTypes.Polyhedron => 0x4;
-        UInt16 IPhysicsModelRigidBodyShapeTypes.List => 0xe;
-    }
+        private ConfigConstant(T val)
+        {
+            Value = val;
+        }
 
+        public static implicit operator T(ConfigConstant<T> value)
+        {
+            return value.Value;
+        }
+
+        public T Value { get; private set; }
+
+        public static class MCCReach
+        {
+            public static class PhysicsModelShapeTypes
+            {
+                public static ConfigConstant<PhysicsModelShapeType> Polyhedron = new ConfigConstant<PhysicsModelShapeType>(4);
+                public static ConfigConstant<PhysicsModelShapeType> List = new ConfigConstant<PhysicsModelShapeType>(0xe);
+            }
+            
+        }
+    }
 
     interface IPhysicsModelRigidBody : IDataBlock
     {
         DataField<float> BoundingSphereRadius { get; }
         DataField<UInt16> ShapeTypeOffset { get; }
-
-        IPhysicsModelRigidBodyShapeTypes ShapeTypes { get;  }
-
-        DataField<UInt16> ShapeIndex { get;  }
-
+        DataField<PhysicsModelShapeType> ShapeIndex { get;  }
     }
 
     interface IPhysicsModelMaterial : IDataBlock
@@ -256,8 +301,6 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModelListShapes : IPhysicsModelListShapes
     {
         UInt32 IDataBlock.Size => 0x20;
-
-
     }
 
     interface IPhysicsModelFourVectors : IDataBlock
@@ -293,10 +336,7 @@ namespace TagCollectionParserPrototype
         UInt32 IDataBlock.Size => 208;
         DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius => new DataField<float>(20);
         DataField<UInt16> IPhysicsModelRigidBody.ShapeTypeOffset => new DataField<UInt16>(168);
-        IPhysicsModelRigidBodyShapeTypes IPhysicsModelRigidBody.ShapeTypes 
-            => new MCCReachPhysicsModelRigidBodyShapeTypes();
-
-        DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0xAA);
+        DataField<PhysicsModelShapeType> IPhysicsModelRigidBody.ShapeIndex => new DataField<PhysicsModelShapeType>(0xAA);
     }
 
     interface IPhysicsModel : IDataBlock
