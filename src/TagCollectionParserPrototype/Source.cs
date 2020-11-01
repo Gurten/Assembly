@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Blamite.Injection;
@@ -46,6 +47,35 @@ namespace TagCollectionParserPrototype
             Assert.AreEqual(1, rigidBodyDataBlock.EntryCount);
             Assert.AreEqual(config.RigidBodyTagBlock.Schema.Size, rigidBodyDataBlock.EntrySize);
 
+            IPhysicsModelPolyhedra poly = new MCCReachPhysicsModelPolyhedra();
+            Assert.AreEqual(poly.AABBHalfExtents[3].Offset, 0x5c);
+        }
+    }
+
+    // ===Ideas===
+    // A tagblock schema should be useful enough to locate the field in an instance given a stream 
+    // holding several instances. A subscript operator that gives you an interator. 
+
+
+    // ======
+
+    public class Utils
+    {
+        private static Dictionary<Type, UInt32> TypeSizes = new Dictionary<Type, UInt32>()
+        {
+            { typeof(float), 4 },
+            { typeof(UInt32), 4 },
+            { typeof(UInt16), 2 },
+        };
+        public static UInt32 FieldSizeBytes<T>(T v) where T : struct
+        {
+            UInt32 size = 0;
+            if (TypeSizes.TryGetValue(typeof(T), out size))
+            {
+                return size;
+            }
+
+            throw new NotImplementedException();
         }
     }
 
@@ -54,7 +84,7 @@ namespace TagCollectionParserPrototype
         UInt32 Size { get; }
     }
 
-    public class DataField<T>
+    public class DataField<T> where T : struct
     {
         public DataField(UInt32 offset)
         {
@@ -65,6 +95,59 @@ namespace TagCollectionParserPrototype
 
         public T TypeStub { get;  }
     };
+
+    interface IVectorField
+    {
+        UInt32 Length();
+    }
+    public abstract class VectorField<T> : IVectorField where T : struct
+    {
+        public VectorField(UInt32 baseOffsetInParent)
+        {
+            _baseOffsetInParent = baseOffsetInParent;
+        }
+
+        private UInt32 _baseOffsetInParent;
+
+        public abstract UInt32 Length();
+
+        public DataField<T> this[UInt32 i]
+        {
+            get => i >= Length() ? throw new IndexOutOfRangeException() :
+                new DataField<T>(_baseOffsetInParent + i * Utils.FieldSizeBytes(default(T)));
+        }
+    }
+
+    public class Vector4Field<T> : VectorField<T> where T : struct
+    {
+        public Vector4Field(UInt32 baseOffsetInParent) : base(baseOffsetInParent) { }
+        public override UInt32 Length() { return 4; }
+    }
+
+
+    interface ISizeAndCapacityField
+    {
+        DataField<UInt32> Size { get; }
+        DataField<UInt32> Capacity { get; }
+    }
+
+    /// <summary>
+    /// Grouping of size and capacity.
+    /// 
+    /// Decided to group these because capacity is often size + 0x80000000 in practice.
+    /// </summary>
+    public class MCCReachSizeAndCapacityField : ISizeAndCapacityField
+    { 
+        public MCCReachSizeAndCapacityField(UInt32 baseOffsetInParent)
+        {
+            _baseOffsetInParent = baseOffsetInParent;
+        }
+
+        private UInt32 _baseOffsetInParent;
+
+        DataField<UInt32> ISizeAndCapacityField.Size => new DataField<UInt32>(_baseOffsetInParent);
+        DataField<UInt32> ISizeAndCapacityField.Capacity => new DataField<UInt32>(_baseOffsetInParent + 4);
+    }
 
     interface ITagBlockRef<SchemaT>
     {
@@ -83,9 +166,9 @@ namespace TagCollectionParserPrototype
         }
 
         UInt32 _offsetInParent = 0;
-        public DataField<uint> Count => new DataField<UInt32>(_offsetInParent + 0);
+        public DataField<UInt32> Count => new DataField<UInt32>(_offsetInParent + 0);
 
-        public DataField<uint> Address => new DataField<UInt32>(_offsetInParent + 4);
+        public DataField<UInt32> Address => new DataField<UInt32>(_offsetInParent + 4);
 
         public T Schema { get; set; }
     }
@@ -93,11 +176,13 @@ namespace TagCollectionParserPrototype
     interface IPhysicsModelRigidBodyShapeTypes
     {
         // Add more as needed.
-        UInt16 List { get;  }
+        UInt16 Polyhedron { get;  }
+        UInt16 List { get; }
     }
 
     class MCCReachPhysicsModelRigidBodyShapeTypes : IPhysicsModelRigidBodyShapeTypes
     {
+        UInt16 IPhysicsModelRigidBodyShapeTypes.Polyhedron => 0x4;
         UInt16 IPhysicsModelRigidBodyShapeTypes.List => 0xe;
     }
 
@@ -109,6 +194,98 @@ namespace TagCollectionParserPrototype
 
         IPhysicsModelRigidBodyShapeTypes ShapeTypes { get;  }
 
+        DataField<UInt16> ShapeIndex { get;  }
+
+    }
+
+    interface IPhysicsModelMaterial : IDataBlock
+    {
+    }
+
+    class MCCReachPhysicsModelMaterial : IPhysicsModelMaterial
+    {
+        UInt32 IDataBlock.Size => 0x10;
+    }
+
+    interface IPhysicsModelPolyhedra : IDataBlock
+    {
+        DataField<float> Radius { get;  }
+        Vector4Field<float> AABBHalfExtents { get; }
+        Vector4Field<float> AABBCenter { get; }
+        ISizeAndCapacityField FourVectors { get; }
+        ISizeAndCapacityField PlaneEquations { get; }
+    }
+
+    class MCCReachPhysicsModelPolyhedra : IPhysicsModelPolyhedra
+    {
+        UInt32 IDataBlock.Size => 0xb0;
+
+        DataField<float> IPhysicsModelPolyhedra.Radius => new DataField<float>(0x40);
+        Vector4Field<float> IPhysicsModelPolyhedra.AABBHalfExtents => new Vector4Field<float>(0x50);
+        Vector4Field<float> IPhysicsModelPolyhedra.AABBCenter => new Vector4Field<float>(0x60);
+
+        ISizeAndCapacityField IPhysicsModelPolyhedra.FourVectors => new MCCReachSizeAndCapacityField(0x78);
+
+        ISizeAndCapacityField IPhysicsModelPolyhedra.PlaneEquations => new MCCReachSizeAndCapacityField(0x98);
+    }
+
+    interface IPhysicsModelLists : IDataBlock
+    {
+        /// Some odd, poorly-named field. Happens to be '128'. 
+        DataField<uint> Count { get; }
+        ISizeAndCapacityField ChildShapes { get; }
+        Vector4Field<float> AABBHalfExtents { get; }
+        Vector4Field<float> AABBCenter { get; }
+    }
+
+    class MCCReachPhysicsModelLists : IPhysicsModelLists
+    {
+        UInt32 IDataBlock.Size => 0x90;
+
+        DataField<uint> IPhysicsModelLists.Count => new DataField<uint>(0xA);
+        ISizeAndCapacityField IPhysicsModelLists.ChildShapes => new MCCReachSizeAndCapacityField(0x38);
+        Vector4Field<float> IPhysicsModelLists.AABBHalfExtents => new Vector4Field<float>(0x50);
+        Vector4Field<float> IPhysicsModelLists.AABBCenter => new Vector4Field<float>(0x60);
+    }
+
+    interface IPhysicsModelListShapes : IDataBlock
+    {
+
+    }
+
+    class MCCReachPhysicsModelListShapes : IPhysicsModelListShapes
+    {
+        UInt32 IDataBlock.Size => 0x20;
+
+
+    }
+
+    interface IPhysicsModelFourVectors : IDataBlock
+    {
+        Vector4Field<float> Vector0 {get;}
+        Vector4Field<float> Vector1 {get;}
+        Vector4Field<float> Vector2 {get;}
+    }
+
+    class PhysicsModelFourVectors : IPhysicsModelFourVectors
+    {
+        UInt32 IDataBlock.Size => 0x30;
+        Vector4Field<float> IPhysicsModelFourVectors.Vector0 => new Vector4Field<float>(0);
+
+        Vector4Field<float> IPhysicsModelFourVectors.Vector1 => new Vector4Field<float>(0x10);
+
+        Vector4Field<float> IPhysicsModelFourVectors.Vector2 => new Vector4Field<float>(0x20);
+    }
+
+    interface IPhysicsModelPlaneEquations : IDataBlock
+    {
+        Vector4Field<float> PlaneEquation { get; }
+    }
+
+    class PhysicsModelPlaneEquations : IPhysicsModelPlaneEquations
+    {
+        UInt32 IDataBlock.Size => 0x10;
+        Vector4Field<float> IPhysicsModelPlaneEquations.PlaneEquation => new Vector4Field<float>(0);
     }
 
     class MCCReachPhysicsModelRigidBody : IPhysicsModelRigidBody
@@ -116,7 +293,10 @@ namespace TagCollectionParserPrototype
         UInt32 IDataBlock.Size => 208;
         DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius => new DataField<float>(20);
         DataField<UInt16> IPhysicsModelRigidBody.ShapeTypeOffset => new DataField<UInt16>(168);
-        IPhysicsModelRigidBodyShapeTypes IPhysicsModelRigidBody.ShapeTypes => new MCCReachPhysicsModelRigidBodyShapeTypes();
+        IPhysicsModelRigidBodyShapeTypes IPhysicsModelRigidBody.ShapeTypes 
+            => new MCCReachPhysicsModelRigidBodyShapeTypes();
+
+        DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0xAA);
     }
 
     interface IPhysicsModel : IDataBlock
@@ -128,7 +308,8 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModel : IPhysicsModel
     {
         UInt32 IDataBlock.Size => 412;
-        ITagBlockRef<IPhysicsModelRigidBody> IPhysicsModel.RigidBodyTagBlock => new MCCReachTagBlockRef<IPhysicsModelRigidBody>(92, new MCCReachPhysicsModelRigidBody());
+        ITagBlockRef<IPhysicsModelRigidBody> IPhysicsModel.RigidBodyTagBlock 
+            => new MCCReachTagBlockRef<IPhysicsModelRigidBody>(92, new MCCReachPhysicsModelRigidBody());
 
     }
 }
