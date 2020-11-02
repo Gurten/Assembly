@@ -72,12 +72,11 @@ namespace TagCollectionParserPrototype
             {
                 var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
                 var bufferWriter = new EndianWriter(buffer, endianness);
-                UInt16 val = mccReachContext.Get<IPhysicsModelShapeTypes>().Polyhedron.Value;
-                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.FourVectors, val);
+                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.AABBCenter, new float[] { 0.123f, 0.456f});
 
-                var x = new byte[4]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
-                buffer.Seek((int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset, SeekOrigin.Begin);
-                buffer.Read(x, 0, 4);
+                var x = new byte[16]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
+                buffer.Seek((int)config.PolyhedraTagBlock.Schema.AABBCenter[0].Offset, SeekOrigin.Begin);
+                buffer.Read(x, 0, 16);
             }
 
 
@@ -134,20 +133,9 @@ namespace TagCollectionParserPrototype
         }
 
         //TODO: utilise this in the iterator. 
-        public static bool WriteToStream<T, U>(IWriter buffer, DataField<U> field, T value) where T : struct, U
+        public static bool WriteToStream<T>(IWriter buffer, IDataField<T> field, T value)
         {
-            return WriteToStreamImpl(buffer, field.Offset, value);
-        }
-
-        private static bool WriteToStreamImpl<T>(IWriter buffer, UInt32 offset, T value) where T : struct
-        {
-            buffer.SeekTo(offset);
-            UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
-            if (buffer.Length <= (writeSizeBytes + offset))
-            {
-                Utils.WriteField(buffer, value);
-            }
-            return false;
+            return field.Visit(buffer, value);
         }
     }
 
@@ -156,50 +144,68 @@ namespace TagCollectionParserPrototype
         UInt32 Size { get; }
     }
 
-    public class DataField<T> // where T : struct
+    public interface IDataField<BackingType>
+    {
+        bool Visit(IWriter buffer, BackingType value);
+    }
+
+    public struct DataField<T> : IDataField<T> where T : struct
     {
         public DataField(UInt32 offset)
         {
             Offset = offset;
-            TypeStub = default(T);
         }
-        public UInt32 Offset { protected set; get; }
 
-        public T TypeStub { get;  }
+        public readonly UInt32 Offset;
 
+        public bool Visit(IWriter buffer, T value)
+        {
+            UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
+            if (buffer.SeekTo(Offset) && buffer.Length <= (writeSizeBytes + Offset))
+            {
+                Utils.WriteField(buffer, value);
+                return true;
+            }
+            return false;
+        }
     }
 
-    interface IVectorField
+    public struct VectorField<T> : IDataField<T[]> where T : struct
     {
-        UInt32 Length();
-    }
-    public abstract class VectorField<T> : IVectorField where T : struct
-    {
-        public VectorField(UInt32 baseOffsetInParent)
+        public VectorField(UInt32 baseOffsetInParent, UInt32 length)
         {
             _baseOffsetInParent = baseOffsetInParent;
+            Length = length;
         }
 
         private UInt32 _baseOffsetInParent;
 
-        public abstract UInt32 Length();
+        public readonly UInt32 Length;
+
+
+        public bool Visit(IWriter buffer, T[] value)
+        {
+            for (uint i = 0, length = value.Length < Length? (uint)value.Length:Length;
+                i < length; ++i)
+            {
+                if (this[i].Visit(buffer, value[i]))
+                {
+                    continue;
+                }
+                return false;
+            }
+
+            return false;
+        }
 
         public DataField<T> this[UInt32 i]
         {
-            get => i >= Length() ? throw new IndexOutOfRangeException() :
+            get => i >= Length ? throw new IndexOutOfRangeException() :
                 new DataField<T>(_baseOffsetInParent + i * Utils.FieldSizeBytes(default(T)));
         }
     }
 
-    public class Vector4Field<T> : VectorField<T> where T : struct
-    {
-        public Vector4Field(UInt32 baseOffsetInParent) : base(baseOffsetInParent) { }
-        public override UInt32 Length() { return 4; }
-    }
-
-    interface ISizeAndCapacity<T>
-    { }
-    interface ISizeAndCapacityField : ISizeAndCapacity<DataField>
+    interface ISizeAndCapacityField : IDataField<UInt32>
     {
         DataField<UInt32> Size { get; }
         DataField<UInt32> Capacity { get; }
@@ -210,7 +216,7 @@ namespace TagCollectionParserPrototype
     /// 
     /// Decided to group these because capacity is often size + 0x80000000 in practice.
     /// </summary>
-    public class MCCReachSizeAndCapacityField : ISizeAndCapacityField
+    public struct MCCReachSizeAndCapacityField : ISizeAndCapacityField
     { 
         public MCCReachSizeAndCapacityField(UInt32 baseOffsetInParent)
         {
@@ -219,8 +225,14 @@ namespace TagCollectionParserPrototype
 
         private UInt32 _baseOffsetInParent;
 
-        DataField<UInt32> ISizeAndCapacityField.Size => new DataField<UInt32>(_baseOffsetInParent);
-        DataField<UInt32> ISizeAndCapacityField.Capacity => new DataField<UInt32>(_baseOffsetInParent + 4);
+        public DataField<UInt32> Size => new DataField<UInt32>(_baseOffsetInParent);
+        public DataField<UInt32> Capacity => new DataField<UInt32>(_baseOffsetInParent + 4);
+
+        public bool Visit(IWriter buffer, uint value)
+        {
+            const uint valueAdjustment = 0x80000000;
+            return Size.Visit(buffer, value) && Capacity.Visit(buffer, value + valueAdjustment);
+        }
     }
 
     interface ITagBlockRef<SchemaT>
@@ -231,15 +243,15 @@ namespace TagCollectionParserPrototype
         SchemaT Schema { set;  get; }
     }
 
-    public class MCCReachTagBlockRef<T> : ITagBlockRef<T>
+    public struct MCCReachTagBlockRef<T> : ITagBlockRef<T>
     {
-        public MCCReachTagBlockRef(UInt32 offsetInParent, T instance)
+        public MCCReachTagBlockRef(UInt32 offsetInParent, T schema)
         {
-            Schema = instance;
+            Schema = schema;
             _offsetInParent = offsetInParent;
         }
 
-        UInt32 _offsetInParent = 0;
+        private readonly UInt32 _offsetInParent;
         public DataField<UInt32> Count => new DataField<UInt32>(_offsetInParent + 0);
 
         public DataField<UInt32> Address => new DataField<UInt32>(_offsetInParent + 4);
@@ -247,7 +259,7 @@ namespace TagCollectionParserPrototype
         public T Schema { get; set; }
     }
 
-    public class ConfigConstant<T>
+    public struct ConfigConstant<T>
     {
         public ConfigConstant(T val)
         {
@@ -333,8 +345,8 @@ namespace TagCollectionParserPrototype
     interface IPhysicsModelPolyhedra : IDataBlock
     {
         DataField<float> Radius { get;  }
-        Vector4Field<float> AABBHalfExtents { get; }
-        Vector4Field<float> AABBCenter { get; }
+        VectorField<float> AABBHalfExtents { get; }
+        VectorField<float> AABBCenter { get; }
         ISizeAndCapacityField FourVectors { get; }
         ISizeAndCapacityField PlaneEquations { get; }
     }
@@ -344,8 +356,8 @@ namespace TagCollectionParserPrototype
         UInt32 IDataBlock.Size => 0xb0;
 
         DataField<float> IPhysicsModelPolyhedra.Radius => new DataField<float>(0x40);
-        Vector4Field<float> IPhysicsModelPolyhedra.AABBHalfExtents => new Vector4Field<float>(0x50);
-        Vector4Field<float> IPhysicsModelPolyhedra.AABBCenter => new Vector4Field<float>(0x60);
+        VectorField<float> IPhysicsModelPolyhedra.AABBHalfExtents => new VectorField<float>(0x50, 4);
+        VectorField<float> IPhysicsModelPolyhedra.AABBCenter => new VectorField<float>(0x60, 4);
 
         ISizeAndCapacityField IPhysicsModelPolyhedra.FourVectors => new MCCReachSizeAndCapacityField(0x78);
 
@@ -357,8 +369,8 @@ namespace TagCollectionParserPrototype
         /// Some odd, poorly-named field. Happens to be '128'. 
         DataField<uint> Count { get; }
         ISizeAndCapacityField ChildShapes { get; }
-        Vector4Field<float> AABBHalfExtents { get; }
-        Vector4Field<float> AABBCenter { get; }
+        VectorField<float> AABBHalfExtents { get; }
+        VectorField<float> AABBCenter { get; }
     }
 
     class MCCReachPhysicsModelLists : IPhysicsModelLists
@@ -367,8 +379,8 @@ namespace TagCollectionParserPrototype
 
         DataField<uint> IPhysicsModelLists.Count => new DataField<uint>(0xA);
         ISizeAndCapacityField IPhysicsModelLists.ChildShapes => new MCCReachSizeAndCapacityField(0x38);
-        Vector4Field<float> IPhysicsModelLists.AABBHalfExtents => new Vector4Field<float>(0x50);
-        Vector4Field<float> IPhysicsModelLists.AABBCenter => new Vector4Field<float>(0x60);
+        VectorField<float> IPhysicsModelLists.AABBHalfExtents => new VectorField<float>(0x50, 4);
+        VectorField<float> IPhysicsModelLists.AABBCenter => new VectorField<float>(0x60, 4);
     }
 
     interface IPhysicsModelListShapes : IDataBlock
@@ -383,30 +395,30 @@ namespace TagCollectionParserPrototype
 
     interface IPhysicsModelFourVectors : IDataBlock
     {
-        Vector4Field<float> Vector0 {get;}
-        Vector4Field<float> Vector1 {get;}
-        Vector4Field<float> Vector2 {get;}
+        VectorField<float> Vector0 {get;}
+        VectorField<float> Vector1 {get;}
+        VectorField<float> Vector2 {get;}
     }
 
     class PhysicsModelFourVectors : IPhysicsModelFourVectors
     {
         UInt32 IDataBlock.Size => 0x30;
-        Vector4Field<float> IPhysicsModelFourVectors.Vector0 => new Vector4Field<float>(0);
+        VectorField<float> IPhysicsModelFourVectors.Vector0 => new VectorField<float>(0, 4);
 
-        Vector4Field<float> IPhysicsModelFourVectors.Vector1 => new Vector4Field<float>(0x10);
+        VectorField<float> IPhysicsModelFourVectors.Vector1 => new VectorField<float>(0x10, 4);
 
-        Vector4Field<float> IPhysicsModelFourVectors.Vector2 => new Vector4Field<float>(0x20);
+        VectorField<float> IPhysicsModelFourVectors.Vector2 => new VectorField<float>(0x20, 4);
     }
 
     interface IPhysicsModelPlaneEquations : IDataBlock
     {
-        Vector4Field<float> PlaneEquation { get; }
+        VectorField<float> PlaneEquation { get; }
     }
 
     class PhysicsModelPlaneEquations : IPhysicsModelPlaneEquations
     {
         UInt32 IDataBlock.Size => 0x10;
-        Vector4Field<float> IPhysicsModelPlaneEquations.PlaneEquation => new Vector4Field<float>(0);
+        VectorField<float> IPhysicsModelPlaneEquations.PlaneEquation => new VectorField<float>(0, 4);
     }
 
     interface IPhysicsModelNode : IDataBlock
