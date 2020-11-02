@@ -79,6 +79,31 @@ namespace TagCollectionParserPrototype
                 buffer.Read(x, 0, 16);
             }
 
+            {
+                TagContainer container2 = new TagContainer();
+
+
+                {
+                    var buffer = new MemoryStream((int)config.Size);
+                }
+
+
+
+                //last step.
+                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag"));
+
+                var buffer = new MemoryStream((int)config.Size);
+                var bufferWriter = new EndianWriter(buffer, endianness);
+                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.AABBCenter, new float[] { 0.123f, 0.456f });
+
+                var x = new byte[16]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
+                buffer.Seek((int)config.PolyhedraTagBlock.Schema.AABBCenter[0].Offset, SeekOrigin.Begin);
+                buffer.Read(x, 0, 16);
+            }
+
+
+
+
 
         }
     }
@@ -95,6 +120,7 @@ namespace TagCollectionParserPrototype
         private static Dictionary<Type, UInt32> _typeSizes = new Dictionary<Type, UInt32>()
         {
             { typeof(float), 4 },
+            { typeof(UInt64), 8 },
             { typeof(UInt32), 4 },
             { typeof(UInt16), 2 },
             { typeof(byte), 1 },
@@ -105,6 +131,7 @@ namespace TagCollectionParserPrototype
             = new Dictionary<Type, Action<IWriter, object>>()
         {
             { typeof(float), (IWriter writer, object obj) => writer.WriteFloat(value: (float)obj) },
+            { typeof(UInt64), (IWriter writer, object obj) => writer.WriteUInt64(value: (UInt64)obj) },
             { typeof(UInt32), (IWriter writer, object obj) => writer.WriteUInt32(value: (UInt32)obj) },
             { typeof(UInt16), (IWriter writer, object obj) => writer.WriteUInt16(value: (UInt16)obj) },
             { typeof(byte), (IWriter writer, object obj) => writer.WriteByte(value: (byte)obj) },
@@ -231,7 +258,7 @@ namespace TagCollectionParserPrototype
         public bool Visit(IWriter buffer, uint value)
         {
             const uint valueAdjustment = 0x80000000;
-            return Size.Visit(buffer, value) && Capacity.Visit(buffer, value + valueAdjustment);
+            return Size.Visit(buffer, value) && Capacity.Visit(buffer, value | valueAdjustment);
         }
     }
 
@@ -344,6 +371,11 @@ namespace TagCollectionParserPrototype
 
     interface IPhysicsModelPolyhedra : IDataBlock
     {
+        DataField<byte> PhantomTypeIndex { get; }
+        DataField<byte> CollisionGroup { get; }
+        DataField<UInt16> Count { get; }
+        // TODO: this is a different size in different engines.
+        VectorField<byte> InstanceOffset { get; }
         DataField<float> Radius { get;  }
         VectorField<float> AABBHalfExtents { get; }
         VectorField<float> AABBCenter { get; }
@@ -355,12 +387,17 @@ namespace TagCollectionParserPrototype
     {
         UInt32 IDataBlock.Size => 0xb0;
 
+        DataField<byte> IPhysicsModelPolyhedra.PhantomTypeIndex => new DataField<byte>(0x1E);
+        DataField<byte> IPhysicsModelPolyhedra.CollisionGroup => new DataField<byte>(0x1F);
+        DataField<UInt16> IPhysicsModelPolyhedra.Count => new DataField<UInt16>(0x2A);
+        /// <summary>
+        /// This is a uint64 (8-bytes) in Halo Reach.
+        /// </summary>
+        VectorField<byte> IPhysicsModelPolyhedra.InstanceOffset => new VectorField<byte>(0x30, 8);
         DataField<float> IPhysicsModelPolyhedra.Radius => new DataField<float>(0x40);
         VectorField<float> IPhysicsModelPolyhedra.AABBHalfExtents => new VectorField<float>(0x50, 4);
         VectorField<float> IPhysicsModelPolyhedra.AABBCenter => new VectorField<float>(0x60, 4);
-
         ISizeAndCapacityField IPhysicsModelPolyhedra.FourVectors => new MCCReachSizeAndCapacityField(0x78);
-
         ISizeAndCapacityField IPhysicsModelPolyhedra.PlaneEquations => new MCCReachSizeAndCapacityField(0x98);
     }
 
@@ -385,12 +422,20 @@ namespace TagCollectionParserPrototype
 
     interface IPhysicsModelListShapes : IDataBlock
     {
-
+        DataField<UInt16> ShapeType { get; }
+        DataField<UInt16> ShapeIndex { get; }
+        DataField<UInt16> ChildShapeCount { get; }
     }
 
     class MCCReachPhysicsModelListShapes : IPhysicsModelListShapes
     {
         UInt32 IDataBlock.Size => 0x20;
+
+        DataField<ushort> IPhysicsModelListShapes.ShapeType => new DataField<UInt16>(0);
+
+        DataField<ushort> IPhysicsModelListShapes.ShapeIndex => new DataField<UInt16>(2);
+
+        DataField<ushort> IPhysicsModelListShapes.ChildShapeCount => new DataField<UInt16>(0x10);
     }
 
     interface IPhysicsModelFourVectors : IDataBlock
