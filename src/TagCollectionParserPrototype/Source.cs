@@ -53,7 +53,7 @@ namespace TagCollectionParserPrototype
             IPhysicsModelPolyhedra poly = new MCCReachPhysicsModelPolyhedra();
             Assert.AreEqual(poly.AABBHalfExtents[3].Offset, 0x5c);
 
-            IContext mccReachContext = new MCCReachContext();
+            ICacheContext mccReachContext = new MCCReachContext();
 
             Assert.IsNotNull(mccReachContext.Get<IPhysicsModelShapeTypes>());
 
@@ -118,18 +118,14 @@ namespace TagCollectionParserPrototype
                 var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
                 var bufferWriter = new EndianWriter(buffer, endianness);
 
-                var serializationContext = ContainerBuilder.CreateSerializationContext(config);
-                var otherSC = serializationContext.CreateSerializationContext((phmo) => phmo.ListsShapesTagBlock);
-                
+                var serializationContext = ContainerBuilder.CreateSerializationContext(config, mccReachContext);
+                var otherSC = serializationContext.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
 
-                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.AABBCenter, new float[] { 0.123f, 0.456f });
+                var instance = otherSC.Add();
+                instance.Serialize((writer, a) => { a.ShapeIndex.Visit(writer, 2); });
+                serializationContext.Finish();
 
             }
-
-
-
-
-
         }
     }
 
@@ -211,29 +207,12 @@ namespace TagCollectionParserPrototype
         }
     }
 
-    /*public class SerializedStruct<Struct> where Struct : IStructSchema
-    {
-        public SerializedStruct(Struct s)
-        {
-            _backing = new byte[(int)s.Size];
-            _stream = new MemoryStream(_backing);
-        }
-
-        private readonly MemoryStream _stream;
-        private readonly byte[] _backing;
-
-    }*/
-
-
     public static class Serialization
     { 
         public static void Serialize<T>(T t, Action<T> action) where T : IStructSchema
         {
-
-
         }
     }
-
 
     public class SerializationBlob<T> where T : IStructSchema
     {
@@ -241,8 +220,6 @@ namespace TagCollectionParserPrototype
         {
             public void Serialize(T t, Action<T> action)
             {
-
-
             }
         }
 
@@ -255,29 +232,57 @@ namespace TagCollectionParserPrototype
 
     public class ContainerBuilder
     {
-        protected ContainerBuilder()
-        { }
+        protected readonly ICacheContext context;
+
+        protected readonly Dictionary<UInt32, IBlockSerializationContext> blocks;
 
         protected UInt32 nextMockAddress = 1;
 
+        protected ContainerBuilder(ICacheContext context)
+        {
+            this.context = context;
+            blocks = new Dictionary<uint, IBlockSerializationContext>();
+        }
+
+        /// <summary>
+        /// A mock address is used to bind a TagRef in an InstanceSerializationContext to a BlockSerializationContext. 
+        /// </summary>
+        /// <returns></returns>
         public UInt32 GetNextMockAddress()
         {
             return nextMockAddress++;
         }
-        
 
-        public static SerializationContext<T> CreateSerializationContext<T>(T schema) where T : IStructSchema
+        protected static RootSerializationContext<T> BuildBase<T>(T schema,
+            ICacheContext context) where T : IStructSchema, ITagRoot
         {
-            return new SerializationContext<T>(schema, new ContainerBuilder());
+            return new BlockSerializationContext<T>(schema, new ContainerBuilder(context)).AddBase<T>();
         }
 
-
-        public class SerializationContext<T> where T : IStructSchema
+        public static RootSerializationContext<T> CreateSerializationContext<T>(T schema, 
+            ICacheContext context) where T : IStructSchema, ITagRoot
         {
+            return BuildBase<T>(schema, context);
+        }
 
-            internal SerializationContext(T schema, ContainerBuilder builder)
+        public interface IInstanceSerializationContext
+        {
+            IReader Reader { get; }
+            IWriter Writer { get; }
+        }
+
+        public class InstanceSerializationContext<T> : IInstanceSerializationContext where T : IStructSchema
+        {
+            private readonly T _schema;
+            protected ContainerBuilder builder;
+            private readonly byte[] _backingData;
+
+            public InstanceSerializationContext(T schema, ContainerBuilder builder)
             {
                 _schema = schema;
+                _backingData = new byte[schema.Size];
+                Reader = new EndianReader(new MemoryStream(_backingData), builder.context.Endian);
+                Writer = new EndianWriter(new MemoryStream(_backingData), builder.context.Endian);
             }
 
             /// <summary>
@@ -287,32 +292,90 @@ namespace TagCollectionParserPrototype
             /// <typeparam name="U">The schema type of the relative tagblock</typeparam>
             /// <param name="action">A path to the tagblock from the schema.</param>
             /// <returns></returns>
-            public SerializationContext<U> CreateSerializationContext<U>(Func<T, ITagBlockRef<U>> action) where U : IStructSchema
+            public BlockSerializationContext<U> GetSerializationContext<U>(Func<T,
+                ITagBlockRef<U>> action) where U : IStructSchema
             {
                 var tagblockRef = action.Invoke(_schema);
                 UInt32 mockAddress = tagblockRef.Address.Visit(null);
                 if (mockAddress != 0)
-                { 
-                    // TODO: find in the dictionary that's in ContainerBuilder, otherwise add a new data-store to the ContainerBuilder. 
-                    // The members of the dict should be 
+                {
+                    return (BlockSerializationContext<U>)builder.blocks[mockAddress];
                 }
 
-                return new SerializationContext<U>(tagblockRef.Schema, _builder);
+                return new BlockSerializationContext<U>(tagblockRef.Schema, builder);
             }
 
-            private T _schema;
-            private ContainerBuilder _builder;
+            public void Serialize(Action<IWriter, T> action)
+            {
+                action.Invoke(Writer, _schema);
+            }
 
-
-
-
+            public IReader Reader { get; }
+            public IWriter Writer { get; }
         }
 
+        public interface IBlockSerializationContext
+        {
+            List<IInstanceSerializationContext> Instances { get; }
+        }
+
+        public class BlockSerializationContext<T> : IBlockSerializationContext where T : IStructSchema
+        {
+            private readonly T _schema;
+            private readonly ContainerBuilder _builder;
+
+            internal BlockSerializationContext(T schema, ContainerBuilder builder)
+            {
+                _schema = schema;
+                _builder = builder;
+                Instances = new List<IInstanceSerializationContext>();
+                builder.blocks.Add(builder.GetNextMockAddress(), this);
+            }
+
+            public List<IInstanceSerializationContext> Instances { get; }
+
+            public InstanceSerializationContext<T> Add()
+            {
+                //TODO: also inc ref? or leave this to serialization.
+                var instance = new InstanceSerializationContext<T>(_schema, _builder);
+                Instances.Add(instance);
+                return instance;
+            }
+
+            public InstanceSerializationContext<T> this[UInt32 i] {
+                get => (InstanceSerializationContext<T>)Instances[(int)i];
+            }
+
+            /// <summary>
+            /// Ignore this.
+            /// </summary>
+            /// <typeparam name="U"></typeparam>
+            /// <returns></returns>
+            [Obsolete]
+            public RootSerializationContext<U> AddBase<U>() where U : T, ITagRoot
+            {
+                //TODO: also inc ref? or leave this to serialization.
+                var instance = new RootSerializationContext<U>((U)_schema, _builder);
+                Instances.Add(instance);
+                return instance;
+            }
+        }
+
+        public class RootSerializationContext<U> : InstanceSerializationContext<U> where U : IStructSchema, ITagRoot
+        {
+            public RootSerializationContext(U schema, ContainerBuilder builder) : base(schema, builder)
+            {
+                this.builder = builder;
+            }
+
+            public DataBlock[] Finish()
+            {
+                //TODO:
+                return null;
+            }
+
+        }
     }
-
-
-
-
 
 
     public interface IStructSchema
@@ -476,8 +539,9 @@ namespace TagCollectionParserPrototype
 
     }
 
-    interface IContext
+    public interface ICacheContext
     {
+        Blamite.IO.Endian Endian { get; }
         T Get<T>();
     }
 
@@ -494,12 +558,15 @@ namespace TagCollectionParserPrototype
         ConfigConstant<byte> Fixed { get; }
     }
 
-    public class MCCReachContext : IContext
+    public class MCCReachContext : ICacheContext
     {
         private Dictionary<Type, object> _handlers = new Dictionary<Type, object>()
         {
             { typeof(IPhysicsModelShapeTypes), new PhysicsModelShapeTypes() },
+            { typeof(IPhysicsModelMotionTypes), new PhysicsModelMotionTypes() },
         };
+
+        public Blamite.IO.Endian Endian => Endian.LittleEndian;
 
         public T Get<T>()
         {
@@ -683,7 +750,10 @@ namespace TagCollectionParserPrototype
         DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0xAA);
     }
 
-    interface IPhysicsModel : IStructSchema
+    public interface ITagRoot
+    { }
+
+    interface IPhysicsModel : IStructSchema, ITagRoot
     { 
         ITagBlockRef<IPhysicsModelRigidBody> RigidBodyTagBlock { get; }
         ITagBlockRef<IPhysicsModelMaterial> MaterialsTagBlock { get; }
