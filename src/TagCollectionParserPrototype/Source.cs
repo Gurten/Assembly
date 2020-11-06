@@ -115,9 +115,6 @@ namespace TagCollectionParserPrototype
             }
 
             {
-                var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
-                var bufferWriter = new EndianWriter(buffer, endianness);
-
                 var serializationContext = ContainerBuilder.CreateSerializationContext(config, mccReachContext);
                 var otherSC = serializationContext.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
 
@@ -256,7 +253,8 @@ namespace TagCollectionParserPrototype
         protected static RootSerializationContext<T> BuildBase<T>(T schema,
             ICacheContext context) where T : IStructSchema, ITagRoot
         {
-            return new BlockSerializationContext<T>(schema, new ContainerBuilder(context)).AddBase<T>();
+            return new BlockSerializationContext<T>(schema, new ContainerBuilder(context), 
+                0, (count)=> { }).AddBase<T>();
         }
 
         public static RootSerializationContext<T> CreateSerializationContext<T>(T schema, 
@@ -269,6 +267,8 @@ namespace TagCollectionParserPrototype
         {
             IReader Reader { get; }
             IWriter Writer { get; }
+
+            IStructSchema Schema { get; }
         }
 
         public class InstanceSerializationContext<T> : IInstanceSerializationContext where T : IStructSchema
@@ -276,9 +276,11 @@ namespace TagCollectionParserPrototype
             private readonly T _schema;
             protected ContainerBuilder builder;
             private readonly byte[] _backingData;
+            private readonly UInt32 _instanceIndex;
 
-            public InstanceSerializationContext(T schema, ContainerBuilder builder)
+            public InstanceSerializationContext(T schema, ContainerBuilder builder, UInt32 instanceIndex)
             {
+                _instanceIndex = instanceIndex;
                 _schema = schema;
                 _backingData = new byte[schema.Size];
                 Reader = new EndianReader(new MemoryStream(_backingData), builder.context.Endian);
@@ -296,49 +298,64 @@ namespace TagCollectionParserPrototype
                 ITagBlockRef<U>> action) where U : IStructSchema
             {
                 var tagblockRef = action.Invoke(_schema);
-                UInt32 mockAddress = tagblockRef.Address.Visit(null);
+                UInt32 mockAddress = tagblockRef.Address.Visit(Reader);
                 if (mockAddress != 0)
                 {
                     return (BlockSerializationContext<U>)builder.blocks[mockAddress];
                 }
 
-                return new BlockSerializationContext<U>(tagblockRef.Schema, builder);
+                mockAddress = builder.GetNextMockAddress();
+                tagblockRef.Address.Visit(Writer, mockAddress);
+                var block = new BlockSerializationContext<U>(tagblockRef.Schema, builder,
+                    mockAddress, (count) => tagblockRef.Count.Visit(Writer, count));
+
+                return block;
             }
 
             public void Serialize(Action<IWriter, T> action)
             {
                 action.Invoke(Writer, _schema);
+                (_schema as IStructWithDataFixup)?.VisitInstance(Writer, _instanceIndex);
             }
 
             public IReader Reader { get; }
             public IWriter Writer { get; }
+            public IStructSchema Schema { get { return _schema; } }
         }
 
         public interface IBlockSerializationContext
         {
             List<IInstanceSerializationContext> Instances { get; }
+
+            UInt32 Address { get; }
         }
 
         public class BlockSerializationContext<T> : IBlockSerializationContext where T : IStructSchema
         {
             private readonly T _schema;
             private readonly ContainerBuilder _builder;
+            private readonly Action<UInt32> _setParentTagRefCount;
 
-            internal BlockSerializationContext(T schema, ContainerBuilder builder)
+            internal BlockSerializationContext(T schema, ContainerBuilder builder, UInt32 address, Action<UInt32> setParentTagRefCount)
             {
+                builder.blocks.Add(address, this);
+                Address = address;
+                _setParentTagRefCount = setParentTagRefCount;
                 _schema = schema;
                 _builder = builder;
                 Instances = new List<IInstanceSerializationContext>();
-                builder.blocks.Add(builder.GetNextMockAddress(), this);
             }
 
             public List<IInstanceSerializationContext> Instances { get; }
 
+            public UInt32 Address { get; }
+
             public InstanceSerializationContext<T> Add()
             {
                 //TODO: also inc ref? or leave this to serialization.
-                var instance = new InstanceSerializationContext<T>(_schema, _builder);
+                var instance = new InstanceSerializationContext<T>(_schema, _builder, (UInt32)Instances.Count);
                 Instances.Add(instance);
+                _setParentTagRefCount((UInt32)Instances.Count);
                 return instance;
             }
 
@@ -363,7 +380,7 @@ namespace TagCollectionParserPrototype
 
         public class RootSerializationContext<U> : InstanceSerializationContext<U> where U : IStructSchema, ITagRoot
         {
-            public RootSerializationContext(U schema, ContainerBuilder builder) : base(schema, builder)
+            public RootSerializationContext(U schema, ContainerBuilder builder) : base(schema, builder, 0)
             {
                 this.builder = builder;
             }
@@ -371,16 +388,49 @@ namespace TagCollectionParserPrototype
             public DataBlock[] Finish()
             {
                 //TODO:
-                return null;
+                var result = new DataBlock[builder.blocks.Count];
+                int index = 0;
+                foreach (KeyValuePair<UInt32, IBlockSerializationContext> item in builder.blocks) 
+                {
+                    result[index] = FlattenInstances(0, item.Value.Instances);
+                    ++index;
+                }
+                return result;
             }
 
         }
+
+        public static DataBlock FlattenInstances(UInt32 originalAddress, List<IInstanceSerializationContext> instances)
+        {
+            int alignment = 16; // TODO: find how to derive this. It'll likely have to be part of the IStructSchema interface and bubbled down.
+
+            //TODO: Probably need to align '.Size' here before multiplying it by '.Count'.
+            byte[] backingData = new byte[instances.Count * instances[0].Schema.Size];
+            var stream = new MemoryStream(backingData);
+            for (int i = 0; i < instances.Count; ++i)
+            {
+                var instanceStream = instances[i].Reader.BaseStream;
+                instanceStream.Seek(0, SeekOrigin.Begin);
+                instanceStream.CopyTo(stream);
+                Console.WriteLine("Position: {0}", stream.Position);
+            }
+
+            var result = new DataBlock(originalAddress, instances.Count, alignment, false, backingData);
+
+            return result;
+        }
+
     }
 
 
     public interface IStructSchema
     {
         UInt32 Size { get; }
+    }
+
+    public interface IStructWithDataFixup
+    {
+        void VisitInstance(IWriter writer, UInt32 index);
     }
 
     public interface IDataField<BackingType>
@@ -499,11 +549,14 @@ namespace TagCollectionParserPrototype
 
     }
 
-    public interface ITagBlockRef<SchemaT>
+    public interface ITagBlockRef
     {
         DataField<UInt32> Count { get; }
         DataField<UInt32> Address { get; }
+    }
 
+    public interface ITagBlockRef<SchemaT> : ITagBlockRef
+    {
         SchemaT Schema { set;  get; }
     }
 
@@ -624,9 +677,9 @@ namespace TagCollectionParserPrototype
         ISizeAndCapacityField PlaneEquations { get; }
     }
 
-    class MCCReachPhysicsModelPolyhedra : IPhysicsModelPolyhedra
+    class MCCReachPhysicsModelPolyhedra : IPhysicsModelPolyhedra, IStructWithDataFixup
     {
-        UInt32 IStructSchema.Size => 0xb0;
+        public UInt32 Size => 0xb0;
 
         DataField<byte> IPhysicsModelPolyhedra.PhantomTypeIndex => new DataField<byte>(0x1E);
         DataField<byte> IPhysicsModelPolyhedra.CollisionGroup => new DataField<byte>(0x1F);
@@ -634,12 +687,18 @@ namespace TagCollectionParserPrototype
         /// <summary>
         /// This is a uint64 (8-bytes) in Halo Reach.
         /// </summary>
-        VectorField<byte> IPhysicsModelPolyhedra.InstanceOffset => new VectorField<byte>(0x30, 8);
+        public VectorField<byte> InstanceOffset => new VectorField<byte>(0x30, 8);
         DataField<float> IPhysicsModelPolyhedra.Radius => new DataField<float>(0x40);
         VectorField<float> IPhysicsModelPolyhedra.AABBHalfExtents => new VectorField<float>(0x50, 4);
         VectorField<float> IPhysicsModelPolyhedra.AABBCenter => new VectorField<float>(0x60, 4);
         ISizeAndCapacityField IPhysicsModelPolyhedra.FourVectors => new MCCReachSizeAndCapacityField(0x78);
         ISizeAndCapacityField IPhysicsModelPolyhedra.PlaneEquations => new MCCReachSizeAndCapacityField(0x98);
+
+        public void VisitInstance(IWriter writer, uint index)
+        {
+            writer.SeekTo(this.InstanceOffset[0].Offset);
+            writer.WriteUInt64(32 + this.Size*index);
+        }
     }
 
     interface IPhysicsModelLists : IStructSchema
