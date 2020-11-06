@@ -82,46 +82,16 @@ namespace TagCollectionParserPrototype
             }
 
             {
-                TagContainer container2 = new TagContainer();
-
-                var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
-                var bufferWriter = new EndianWriter(buffer, endianness);
-
-                float radius = 123.0f;
-                Serialization.Serialize(config.PolyhedraTagBlock.Schema, (aaa) => { aaa.Radius.Visit(bufferWriter, radius); });
-
-                //last step.
-                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag"));
-
-                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.AABBCenter, new float[] { 0.123f, 0.456f });
-
-                var x = new byte[16]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
-                buffer.Seek((int)config.PolyhedraTagBlock.Schema.AABBCenter[0].Offset, SeekOrigin.Begin);
-                buffer.Read(x, 0, 16);
-
-            }
-
-            {
-                TagContainer container2 = new TagContainer();
-
-                var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
-                var bufferWriter = new EndianWriter(buffer, endianness);
-
-                float radius = 123.0f;
-                Serialization.Serialize(config.PolyhedraTagBlock.Schema, (aaa) => { aaa.Radius.Visit(bufferWriter, radius); });
-
-                //last step.
-                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag"));
-            }
-
-            {
-                var serializationContext = ContainerBuilder.CreateSerializationContext(config, mccReachContext);
-                var otherSC = serializationContext.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
+                var sc = ContainerBuilder.CreateSerializationContext(config, mccReachContext);
+                var otherSC = sc.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
 
                 var instance = otherSC.Add();
                 instance.Serialize((writer, a) => { a.ShapeIndex.Visit(writer, 2); });
-                serializationContext.Finish();
+                var blocks = sc.Finish();
 
+                TagContainer container2 = new TagContainer();
+                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag"));
+                foreach(var b in blocks){ container2.AddDataBlock(b); }
             }
         }
     }
@@ -203,29 +173,6 @@ namespace TagCollectionParserPrototype
             return field.Visit(buffer, value);
         }
     }
-
-    public static class Serialization
-    { 
-        public static void Serialize<T>(T t, Action<T> action) where T : IStructSchema
-        {
-        }
-    }
-
-    public class SerializationBlob<T> where T : IStructSchema
-    {
-        public class SerializationContext<T>
-        {
-            public void Serialize(T t, Action<T> action)
-            {
-            }
-        }
-
-        public SerializationContext<T> Add()
-        {
-            return new SerializationContext<T>();
-        }
-    }
-
 
     public class ContainerBuilder
     {
@@ -402,20 +349,33 @@ namespace TagCollectionParserPrototype
 
         public static DataBlock FlattenInstances(UInt32 originalAddress, List<IInstanceSerializationContext> instances)
         {
-            int alignment = 16; // TODO: find how to derive this. It'll likely have to be part of the IStructSchema interface and bubbled down.
+            UInt32 alignment = instances[0].Schema.Alignment;
+            UInt32 effectiveSize = instances[0].Schema.Size;
+            UInt32 paddingBytes = 0;
+            if (alignment > 0)
+            {
+                // Power of 2 check
+                if (!((alignment & (alignment - 1)) == 0))
+                {
+                    throw new InvalidDataException("Alignment for schema " 
+                        + instances[0].Schema.GetType().ToString() + " needs to be power of 2.");
+                }
+                UInt32 mask = alignment - 1;
+                paddingBytes = alignment - (effectiveSize & mask);
+            }
 
-            //TODO: Probably need to align '.Size' here before multiplying it by '.Count'.
-            byte[] backingData = new byte[instances.Count * instances[0].Schema.Size];
+            byte[] backingData = new byte[instances.Count * (effectiveSize+paddingBytes)];
             var stream = new MemoryStream(backingData);
             for (int i = 0; i < instances.Count; ++i)
             {
                 var instanceStream = instances[i].Reader.BaseStream;
                 instanceStream.Seek(0, SeekOrigin.Begin);
                 instanceStream.CopyTo(stream);
+                stream.Seek(paddingBytes, SeekOrigin.Current);
                 Console.WriteLine("Position: {0}", stream.Position);
             }
 
-            var result = new DataBlock(originalAddress, instances.Count, alignment, false, backingData);
+            var result = new DataBlock(originalAddress, instances.Count, (int)alignment, false, backingData);
 
             return result;
         }
@@ -426,6 +386,7 @@ namespace TagCollectionParserPrototype
     public interface IStructSchema
     {
         UInt32 Size { get; }
+        UInt32 Alignment { get; }
     }
 
     public interface IStructWithDataFixup
@@ -657,6 +618,7 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModelMaterial : IPhysicsModelMaterial
     {
         UInt32 IStructSchema.Size => 0x10;
+        UInt32 IStructSchema.Alignment => 4;
 
         DataField<StringID> IPhysicsModelMaterial.Name => new DataField<StringID>(0);
 
@@ -668,7 +630,7 @@ namespace TagCollectionParserPrototype
         DataField<byte> PhantomTypeIndex { get; }
         DataField<byte> CollisionGroup { get; }
         DataField<UInt16> Count { get; }
-        // TODO: this is a different size in different engines.
+        /// This is a different size on different engines.
         VectorField<byte> InstanceOffset { get; }
         DataField<float> Radius { get;  }
         VectorField<float> AABBHalfExtents { get; }
@@ -680,6 +642,8 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModelPolyhedra : IPhysicsModelPolyhedra, IStructWithDataFixup
     {
         public UInt32 Size => 0xb0;
+
+        UInt32 IStructSchema.Alignment => 0x10;
 
         DataField<byte> IPhysicsModelPolyhedra.PhantomTypeIndex => new DataField<byte>(0x1E);
         DataField<byte> IPhysicsModelPolyhedra.CollisionGroup => new DataField<byte>(0x1F);
@@ -710,14 +674,19 @@ namespace TagCollectionParserPrototype
         VectorField<float> AABBCenter { get; }
     }
 
-    class MCCReachPhysicsModelLists : IPhysicsModelLists
+    class MCCReachPhysicsModelLists : IPhysicsModelLists, IStructWithDataFixup
     {
         UInt32 IStructSchema.Size => 0x90;
-
-        DataField<uint> IPhysicsModelLists.Count => new DataField<uint>(0xA);
+        UInt32 IStructSchema.Alignment => 0x10;
+        public DataField<uint> Count => new DataField<uint>(0xA);
         ISizeAndCapacityField IPhysicsModelLists.ChildShapes => new MCCReachSizeAndCapacityField(0x38);
         VectorField<float> IPhysicsModelLists.AABBHalfExtents => new VectorField<float>(0x50, 4);
         VectorField<float> IPhysicsModelLists.AABBCenter => new VectorField<float>(0x60, 4);
+
+        void IStructWithDataFixup.VisitInstance(IWriter writer, uint index)
+        {
+            Count.Visit(writer, 128);
+        }
     }
 
     interface IPhysicsModelListShapes : IStructSchema
@@ -730,6 +699,7 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModelListShapes : IPhysicsModelListShapes
     {
         UInt32 IStructSchema.Size => 0x20;
+        UInt32 IStructSchema.Alignment => 0x4;
 
         DataField<ushort> IPhysicsModelListShapes.ShapeType => new DataField<UInt16>(0);
 
@@ -748,6 +718,7 @@ namespace TagCollectionParserPrototype
     class PhysicsModelFourVectors : IPhysicsModelFourVectors
     {
         UInt32 IStructSchema.Size => 0x30;
+        UInt32 IStructSchema.Alignment => 0x10;
         VectorField<float> IPhysicsModelFourVectors.Vector0 => new VectorField<float>(0, 4);
 
         VectorField<float> IPhysicsModelFourVectors.Vector1 => new VectorField<float>(0x10, 4);
@@ -763,6 +734,7 @@ namespace TagCollectionParserPrototype
     class PhysicsModelPlaneEquations : IPhysicsModelPlaneEquations
     {
         UInt32 IStructSchema.Size => 0x10;
+        UInt32 IStructSchema.Alignment => 0x10;
         VectorField<float> IPhysicsModelPlaneEquations.PlaneEquation => new VectorField<float>(0, 4);
     }
 
@@ -778,6 +750,7 @@ namespace TagCollectionParserPrototype
     class PhysicsModelNode : IPhysicsModelNode
     {
         UInt32 IStructSchema.Size => 0xC;
+        UInt32 IStructSchema.Alignment => 4;
 
         DataField<StringID> IPhysicsModelNode.Name => new DataField<StringID>(0);
 
@@ -802,6 +775,7 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModelRigidBody : IPhysicsModelRigidBody
     {
         UInt32 IStructSchema.Size => 208;
+        UInt32 IStructSchema.Alignment => 4;
         DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius => new DataField<float>(20);
         DataField<byte> IPhysicsModelRigidBody.MotionType => new DataField<byte>(0x1c);
         DataField<UInt16> IPhysicsModelRigidBody.ShapeType => new DataField<UInt16>(168);
@@ -829,6 +803,7 @@ namespace TagCollectionParserPrototype
     class MCCReachPhysicsModel : IPhysicsModel
     {
         UInt32 IStructSchema.Size => 412;
+        UInt32 IStructSchema.Alignment => 4;
         ITagBlockRef<IPhysicsModelRigidBody> IPhysicsModel.RigidBodyTagBlock 
             => new MCCReachTagBlockRef<IPhysicsModelRigidBody>(92, new MCCReachPhysicsModelRigidBody());
 
