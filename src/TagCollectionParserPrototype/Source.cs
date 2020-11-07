@@ -275,7 +275,7 @@ namespace TagCollectionParserPrototype
                 var blocks = sc.Finish();
 
                 TagContainer container2 = new TagContainer();
-                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag3"));
+                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag5"));
                 foreach(var b in blocks){ container2.AddDataBlock(b); }
 
                 string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized.tagc";
@@ -450,8 +450,8 @@ namespace TagCollectionParserPrototype
                 _instanceIndex = instanceIndex;
                 _schema = schema;
                 _backingData = new byte[schema.Size];
-                Reader = new EndianReader(new MemoryStream(_backingData), builder.context.Endian);
-                Writer = new EndianWriter(new MemoryStream(_backingData), builder.context.Endian);
+                Reader = new EndianReader(new MemoryStream(_backingData, 0, _backingData.Length, false), builder.context.Endian);
+                Writer = new EndianWriter(new MemoryStream(_backingData, 0, _backingData.Length, true), builder.context.Endian);
                 AddressFixups = new List<DataBlockAddressFixup>();
             }
 
@@ -571,14 +571,16 @@ namespace TagCollectionParserPrototype
 
         }
 
-        public static DataBlock FlattenInstances(UInt32 originalAddress, List<IInstanceSerializationContext> instances)
+        public static DataBlock FlattenInstances(UInt32 originalAddress, 
+            List<IInstanceSerializationContext> instances)
         {
             UInt32 alignedSize = Utils.GetAlignedSize(instances[0].Schema);
             UInt32 paddingBytes = alignedSize - instances[0].Schema.Size;
 
             byte[] backingData = new byte[instances.Count * alignedSize];
             var stream = new MemoryStream(backingData);
-            List<DataBlockAddressFixup> allAddressFixupsFromInstances = new List<DataBlockAddressFixup>();
+            List<DataBlockAddressFixup> allAddressFixupsFromInstances 
+                = new List<DataBlockAddressFixup>();
             for (int i = 0; i < instances.Count; ++i)
             {
                 var instanceStream = instances[i].Reader.BaseStream;
@@ -586,7 +588,8 @@ namespace TagCollectionParserPrototype
                 instanceStream.CopyTo(stream);
                 stream.Seek(paddingBytes, SeekOrigin.Current);
                 Console.WriteLine("Position: {0}", stream.Position);
-                foreach (var fixup in instances[i].AddressFixups) { allAddressFixupsFromInstances.Add(fixup); }
+                foreach (var fixup in instances[i].AddressFixups) 
+                { allAddressFixupsFromInstances.Add(fixup); }
             }
 
             var result = new DataBlock(originalAddress, instances.Count, 
@@ -629,7 +632,8 @@ namespace TagCollectionParserPrototype
         public bool Visit(IWriter buffer, T value)
         {
             UInt32 writeSizeBytes = Utils.FieldSizeBytes(value);
-            if (buffer.SeekTo(Offset) && buffer.Length <= (writeSizeBytes + Offset))
+            UInt32 bufferLength = (UInt32)buffer.Length;
+            if (buffer.SeekTo(Offset) && (writeSizeBytes + Offset) <= bufferLength)
             {
                 Utils.WriteField(buffer, value);
                 return true;
@@ -1050,7 +1054,7 @@ namespace TagCollectionParserPrototype
             => new MCCReachTagBlockRef<IPhysicsModelLists>(0xe0, new MCCReachPhysicsModelLists());
 
         ITagBlockRef<IPhysicsModelListShapes> IPhysicsModel.ListsShapesTagBlock
-            => new MCCReachTagBlockRef<IPhysicsModelListShapes>(0xe0, new MCCReachPhysicsModelListShapes());
+            => new MCCReachTagBlockRef<IPhysicsModelListShapes>(0xec, new MCCReachPhysicsModelListShapes());
 
         //ITagBlockRef<IPhysicsModelListShapes> IPhysicsModel.RegionsTagBlock => throw new NotImplementedException();
 
