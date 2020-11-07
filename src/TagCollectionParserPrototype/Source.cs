@@ -275,8 +275,16 @@ namespace TagCollectionParserPrototype
                 var blocks = sc.Finish();
 
                 TagContainer container2 = new TagContainer();
-                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag"));
+                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag3"));
                 foreach(var b in blocks){ container2.AddDataBlock(b); }
+
+                string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized.tagc";
+                using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
+                {
+                    TagContainerWriter.WriteTagContainer(container2, writer);
+                }
+                    
+
             }
         }
     }
@@ -363,6 +371,25 @@ namespace TagCollectionParserPrototype
         {
             return field.Visit(buffer, value);
         }
+
+        public static UInt32 GetAlignedSize(IStructSchema schema)
+        {
+            UInt32 alignment = schema.Alignment;
+            UInt32 effectiveSize = schema.Size;
+            UInt32 paddingBytes = 0;
+            if (alignment > 0)
+            {
+                // Power of 2 check
+                if (!((alignment & (alignment - 1)) == 0))
+                {
+                    throw new InvalidDataException("Alignment for schema "
+                        + schema.GetType().ToString() + " needs to be power of 2.");
+                }
+                UInt32 mask = alignment - 1;
+                paddingBytes = (alignment - (effectiveSize & mask)) & mask;
+            }
+            return effectiveSize + paddingBytes;
+        }
     }
 
     public class ContainerBuilder
@@ -406,6 +433,8 @@ namespace TagCollectionParserPrototype
             IReader Reader { get; }
             IWriter Writer { get; }
 
+            List<DataBlockAddressFixup> AddressFixups { get; }
+
             IStructSchema Schema { get; }
         }
 
@@ -423,6 +452,7 @@ namespace TagCollectionParserPrototype
                 _backingData = new byte[schema.Size];
                 Reader = new EndianReader(new MemoryStream(_backingData), builder.context.Endian);
                 Writer = new EndianWriter(new MemoryStream(_backingData), builder.context.Endian);
+                AddressFixups = new List<DataBlockAddressFixup>();
             }
 
             /// <summary>
@@ -446,7 +476,8 @@ namespace TagCollectionParserPrototype
                 tagblockRef.Address.Visit(Writer, mockAddress);
                 var block = new BlockSerializationContext<U>(tagblockRef.Schema, builder,
                     mockAddress, (count) => tagblockRef.Count.Visit(Writer, count));
-
+                AddressFixups.Add(new DataBlockAddressFixup(mockAddress, 
+                    (int)(_instanceIndex*Utils.GetAlignedSize(_schema)+ tagblockRef.Address.Offset)));
                 return block;
             }
 
@@ -459,7 +490,9 @@ namespace TagCollectionParserPrototype
             public IReader Reader { get; }
             public IWriter Writer { get; }
             public IStructSchema Schema { get { return _schema; } }
-        }
+
+            public List<DataBlockAddressFixup> AddressFixups { get; }
+    }
 
         public interface IBlockSerializationContext
         {
@@ -530,7 +563,7 @@ namespace TagCollectionParserPrototype
                 int index = 0;
                 foreach (KeyValuePair<UInt32, IBlockSerializationContext> item in builder.blocks) 
                 {
-                    result[index] = FlattenInstances(0, item.Value.Instances);
+                    result[index] = FlattenInstances(item.Key, item.Value.Instances);
                     ++index;
                 }
                 return result;
@@ -540,23 +573,12 @@ namespace TagCollectionParserPrototype
 
         public static DataBlock FlattenInstances(UInt32 originalAddress, List<IInstanceSerializationContext> instances)
         {
-            UInt32 alignment = instances[0].Schema.Alignment;
-            UInt32 effectiveSize = instances[0].Schema.Size;
-            UInt32 paddingBytes = 0;
-            if (alignment > 0)
-            {
-                // Power of 2 check
-                if (!((alignment & (alignment - 1)) == 0))
-                {
-                    throw new InvalidDataException("Alignment for schema " 
-                        + instances[0].Schema.GetType().ToString() + " needs to be power of 2.");
-                }
-                UInt32 mask = alignment - 1;
-                paddingBytes = alignment - (effectiveSize & mask);
-            }
+            UInt32 alignedSize = Utils.GetAlignedSize(instances[0].Schema);
+            UInt32 paddingBytes = alignedSize - instances[0].Schema.Size;
 
-            byte[] backingData = new byte[instances.Count * (effectiveSize+paddingBytes)];
+            byte[] backingData = new byte[instances.Count * alignedSize];
             var stream = new MemoryStream(backingData);
+            List<DataBlockAddressFixup> allAddressFixupsFromInstances = new List<DataBlockAddressFixup>();
             for (int i = 0; i < instances.Count; ++i)
             {
                 var instanceStream = instances[i].Reader.BaseStream;
@@ -564,9 +586,13 @@ namespace TagCollectionParserPrototype
                 instanceStream.CopyTo(stream);
                 stream.Seek(paddingBytes, SeekOrigin.Current);
                 Console.WriteLine("Position: {0}", stream.Position);
+                foreach (var fixup in instances[i].AddressFixups) { allAddressFixupsFromInstances.Add(fixup); }
             }
 
-            var result = new DataBlock(originalAddress, instances.Count, (int)alignment, false, backingData);
+            var result = new DataBlock(originalAddress, instances.Count, 
+                (int)instances[0].Schema.Alignment, false, backingData);
+            foreach(var fixup in allAddressFixupsFromInstances)
+            { result.AddressFixups.Add(fixup); }
 
             return result;
         }
