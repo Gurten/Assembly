@@ -1,29 +1,92 @@
 ﻿/// The Tag Collection Parser Prototype Project
 /// Author: Gurten
-using System;
-using System.IO;
 using Blamite.Blam;
 using Blamite.Injection;
 using Blamite.IO;
 using Blamite.Util;
+using NUnit.Framework;
+using System;
+using System.IO;
+using System.Linq;
 using TagCollectionParserPrototype.Cache.Core;
 using TagCollectionParserPrototype.Cache.MccReach.Context;
 using TagCollectionParserPrototype.Cache.Types.Phmo;
 using TagCollectionParserPrototype.Schema.MccReach.Phmo;
 using TagCollectionParserPrototype.Schema.Phmo;
+using TagCollectionParserPrototype.TagSerialization;
 using TagCollectionParserPrototype.TagSerialization.ContainerBuilder;
 
-//using SimpleJSON;
-
-namespace TagCollectionParserPrototype
+namespace TagCollectionParserPrototype.Tests.CreateMccReachPhmo
 {
     class Program
     {
-
         static void Main(string[] args)
         {
             IPhysicsModel config = new MCCReachPhysicsModel();
+            string tagFilePath = @"C:\Users\gurten\Documents\tags\reach\ff_ramp_2x2_steep.tagc";
+            Console.WriteLine("Hello World!");
+            TagContainer container;
+
+            // TODO: derrive endianness.
+            var endianness = Blamite.IO.Endian.LittleEndian;
+
+            using (var reader = new EndianReader(File.OpenRead(tagFilePath), endianness))
+                container = TagContainerReader.ReadTagContainer(reader);
+
+            Console.WriteLine(container.ToString());
+
+            Assert.AreNotEqual(0, container.Tags.Count());
+            var phmoTag = container.Tags.ElementAt(0);
+
+            Assert.AreEqual(CharConstant.FromString("phmo"), phmoTag.Group, "First tag needs to be a phmo.");
+
+            DataBlock tagData = container.FindDataBlock(phmoTag.OriginalAddress);
+            Assert.IsNotNull(tagData, "could not find main tagblock");
+
+            Assert.AreEqual(1, tagData.EntryCount);
+            Assert.AreEqual(config.Size, tagData.EntrySize);
+
+            var rigidBodyDataBlockFixup = tagData.AddressFixups.ElementAt(0);
+            Assert.AreEqual(config.RigidBodyTagBlock.Address.Offset,
+                rigidBodyDataBlockFixup.WriteOffset);
+
+            var rigidBodyDataBlock = container.FindDataBlock(rigidBodyDataBlockFixup.OriginalAddress);
+            Assert.IsNotNull(rigidBodyDataBlock, "could not find rigidbody tagblock");
+
+            Assert.AreEqual(1, rigidBodyDataBlock.EntryCount);
+            Assert.AreEqual(config.RigidBodyTagBlock.Schema.Size, rigidBodyDataBlock.EntrySize);
+
+            IPhysicsModelPolyhedra poly = new MCCReachPhysicsModelPolyhedra();
+            Assert.AreEqual(poly.AABBHalfExtents[3].Offset, 0x5c);
+
             ICacheContext context = new MCCReachContext();
+
+            Assert.IsNotNull(context.Get<IPhysicsModelShapeTypes>());
+
+            {
+                var buffer = new MemoryStream((int)config.RigidBodyTagBlock.Schema.Size);
+                var bufferWriter = new EndianWriter(buffer, endianness);
+                //bufferWriter.WriteBlock(block.Data);
+
+
+                UInt16 val = context.Get<IPhysicsModelShapeTypes>().Polyhedron.Value;
+                Utils.WriteToStream(bufferWriter, config.RigidBodyTagBlock.Schema.ShapeIndex, val);
+
+                var x = new byte[4]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
+                buffer.Seek((int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset, SeekOrigin.Begin);
+                buffer.Read(x, 0, 4);
+            }
+
+            {
+                var buffer = new MemoryStream((int)config.PolyhedraTagBlock.Schema.Size);
+                var bufferWriter = new EndianWriter(buffer, endianness);
+                Utils.WriteToStream(bufferWriter, config.PolyhedraTagBlock.Schema.AABBCenter, new float[] { 0.123f, 0.456f });
+
+                var x = new byte[16]; // (int)config.RigidBodyTagBlock.Schema.ShapeIndex.Offset
+                buffer.Seek((int)config.PolyhedraTagBlock.Schema.AABBCenter[0].Offset, SeekOrigin.Begin);
+                buffer.Read(x, 0, 16);
+            }
+
             {
                 var sc = ContainerBuilder.CreateSerializationContext(config, context);
                 {
@@ -226,6 +289,8 @@ namespace TagCollectionParserPrototype
                 {
                     TagContainerWriter.WriteTagContainer(container2, writer);
                 }
+
+
             }
         }
     }

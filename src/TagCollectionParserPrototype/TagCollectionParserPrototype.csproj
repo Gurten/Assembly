@@ -110,7 +110,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AssetReaders\BlenderPhmoReader.cs" />
+    <Compile Include="Cache\Core.cs" />
+    <Compile Include="Cache\MccReach\Context.cs" />
+    <Compile Include="Cache\MccReach\Phmo.cs" />
+    <Compile Include="Cache\Types\Phmo.cs" />
+    <Compile Include="Common\SimpleJson.cs" />
+    <Compile Include="Schema\MccReach\Phmo.cs" />
+    <Compile Include="Schema\MccReach\SchemaCore.cs" />
+    <Compile Include="Schema\Phmo.cs" />
+    <Compile Include="Schema\SchemaCore.cs" />
     <Compile Include="Source.cs" />
+    <Compile Include="TagSerialization\ContainerBuilder.cs" />
+    <Compile Include="TagSerialization\Utils.cs" />
+    <Compile Include="Tests\CreateMccReachPhmo.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Blamite\Blamite.csproj">
@@ -121,6 +134,7 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
