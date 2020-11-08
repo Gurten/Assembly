@@ -13,7 +13,10 @@ using TagCollectionParserPrototype.Schema.MccReach.Phmo;
 using TagCollectionParserPrototype.Schema.Phmo;
 using TagCollectionParserPrototype.TagSerialization.ContainerBuilder;
 
-//using SimpleJSON;
+using SimpleJSON;
+using AssetReaders.Geometry;
+using NUnit.Framework;
+using TagCollectionParserPrototype.TagSerialization;
 
 namespace TagCollectionParserPrototype
 {
@@ -24,209 +27,151 @@ namespace TagCollectionParserPrototype
         {
             IPhysicsModel config = new MCCReachPhysicsModel();
             ICacheContext context = new MCCReachContext();
+
+            string jsonPath = @"C:\Users\gurten\Documents\untitled.json";
+            BlenderPhmoReader reader = new BlenderPhmoReader(jsonPath);
+            var jsonFileRoot = reader.ReadFile();
+            Assert.IsNotNull(jsonFileRoot, "Could not parse file.");
+            var shapeDefinitions = jsonFileRoot.AsArray;
+            Assert.Greater(shapeDefinitions.Count, 0, "No shapes in json.");
+
+            var sc = ContainerBuilder.CreateSerializationContext(config, context);
+
+            var materialSc = sc.GetSerializationContext((phmo) => phmo.MaterialsTagBlock);
+            materialSc.Add().Serialize((writer, a) => {
+                a.Name.Visit(writer, new StringID(1));
+                a.PhantomTypeIndex.Visit(writer, -1);
+            });
+
+            var nodeSc = sc.GetSerializationContext((phmo) => phmo.NodesTagBlock);
+            nodeSc.Add().Serialize((writer, a) => {
+                a.Name.Visit(writer, new StringID(1));
+                a.ChildIndex.Visit(writer, -1);
+                a.ParentIndex.Visit(writer, -1);
+                a.SiblingIndex.Visit(writer, -1);
+            });
+            
+            var blocks = sc.Finish();
+
+            TagContainer container = new TagContainer();
+            container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag6"));
+            foreach (var b in blocks) { container.AddDataBlock(b); }
+
+            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized.tagc";
+            using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
             {
-                var sc = ContainerBuilder.CreateSerializationContext(config, context);
-                {
-                    var rigidBodySc = sc.GetSerializationContext((phmo) => phmo.RigidBodyTagBlock);
-                    rigidBodySc.Add().Serialize((writer, a) =>
-                    {
-                        a.BoundingSphereRadius.Visit(writer, 123f);
-                        a.MotionType.Visit(writer, context.Get<IPhysicsModelMotionTypes>().Fixed);
-                        a.ShapeType.Visit(writer, context.Get<IPhysicsModelShapeTypes>().List);
-                        a.Mass.Visit(writer, 123f);
-                        a.ShapeIndex.Visit(writer, 0);
-                    });
-                }
-                {
-                    var listSc = sc.GetSerializationContext((phmo) => phmo.ListsTagBlock);
-                    listSc.Add().Serialize((writer, a) => {
-                        a.AABBHalfExtents.Visit(writer, new float[] { 1f, 1f, 1f, 0.01639998f });
-                        a.AABBCenter.Visit(writer, new float[] { 0f, 0f, 1f, 1f });
-                        a.ChildShapes.Visit(writer, 3); // put the actual value here.
-                    });
-                }
-
-                {
-                    var listShapesSc = sc.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
-                    for (UInt16 i = 0; i < 3; ++i)
-                    {
-                        listShapesSc.Add().Serialize((writer, a) => {
-                            a.ShapeIndex.Visit(writer, i);
-                            a.ChildShapeCount.Visit(writer, 3);
-                            a.ShapeType.Visit(writer, context.Get<IPhysicsModelShapeTypes>().Polyhedron);
-                        });
-                    }
-                }
-
-                {
-                    var polyhedraSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraTagBlock);
-                    var planesSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraPlaneEquationsTagBlock);
-                    var fourVectorSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraFourVectorTagBlock);
-
-                    polyhedraSc.Add().Serialize((writer, a) => {
-                        a.Name.Visit(writer, new StringID(1)); // default
-                        a.Radius.Visit(writer, 0.0164f);
-                        a.FourVectors.Visit(writer, 2);
-                        a.PlaneEquations.Visit(writer, 6);
-                        a.VertexCount.Visit(writer, 6);
-                        a.AABBHalfExtents.Visit(writer, new float[] { 0.9835999f, 0.08360004f, 0.9836004f, 0f });
-                        a.AABBCenter.Visit(writer, new float[] { 0f, -0.9f, 1f, 0f });
-                    });
-
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, -1f, 0f, -0.9836001f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 1f, 0f, 0.8164f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6944277f, 0.1885228f, 0.6944273f, -0.5089993f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6826782f, 0.2465233f, 0.6878784f, -0.4505166f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 1f, 0f, 0f, -0.9835998f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 0f, -1f, 0.01640397f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
-                    });
-
-
-                    polyhedraSc.Add().Serialize((writer, a) => {
-                        a.Name.Visit(writer, new StringID(1)); // default
-                        a.Radius.Visit(writer, 0.0164f);
-                        a.FourVectors.Visit(writer, 2);
-                        a.PlaneEquations.Visit(writer, 6);
-                        a.VertexCount.Visit(writer, 6);
-                        a.AABBHalfExtents.Visit(writer, new float[] { 0.9835999f, 0.08360004f, 0.9836004f, 0f });
-                        a.AABBCenter.Visit(writer, new float[] { 0f, -0.9f, 1f, 0f });
-                    });
-
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, -1f, 0f, -0.9836001f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 1f, 0f, 0.8164f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6944277f, 0.1885228f, 0.6944273f, -0.5089993f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6826782f, 0.2465233f, 0.6878784f, -0.4505166f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 1f, 0f, 0f, -0.9835998f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 0f, -1f, 0.01640397f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
-                    });
-
-                    polyhedraSc.Add().Serialize((writer, a) => {
-                        a.Name.Visit(writer, new StringID(1)); // default
-                        a.Radius.Visit(writer, 0.0164f);
-                        a.FourVectors.Visit(writer, 2);
-                        a.PlaneEquations.Visit(writer, 6);
-                        a.VertexCount.Visit(writer, 6);
-                        a.AABBHalfExtents.Visit(writer, new float[] { 0.9835999f, 0.08360004f, 0.9836004f, 0f });
-                        a.AABBCenter.Visit(writer, new float[] { 0f, -0.9f, 1f, 0f });
-                    });
-
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, -1f, 0f, -0.9836001f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 1f, 0f, 0.8164f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6944277f, 0.1885228f, 0.6944273f, -0.5089993f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { -0.6826782f, 0.2465233f, 0.6878784f, -0.4505166f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 1f, 0f, 0f, -0.9835998f });
-                    });
-                    planesSc.Add().Serialize((writer, a) => {
-                        a.PlaneEquation.Visit(writer, new float[] { 0f, 0f, -1f, 0.01640397f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
-                    });
-
-                    fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
-                    });
-
-                }
-
-                {
-                    var materialSc = sc.GetSerializationContext((phmo) => phmo.MaterialsTagBlock);
-
-                    materialSc.Add().Serialize((writer, a) => {
-                        a.Name.Visit(writer, new StringID(1));
-                        a.PhantomTypeIndex.Visit(writer, -1);
-                    });
-                }
-
-                {
-                    var nodeSc = sc.GetSerializationContext((phmo) => phmo.NodesTagBlock);
-
-                    nodeSc.Add().Serialize((writer, a) => {
-                        a.Name.Visit(writer, new StringID(1));
-                        a.ChildIndex.Visit(writer, -1);
-                        a.ParentIndex.Visit(writer, -1);
-                        a.SiblingIndex.Visit(writer, -1);
-                    });
-                }
-
-                var otherSC = sc.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
-
-                var instance = otherSC.Add();
-                instance.Serialize((writer, a) => { a.ShapeIndex.Visit(writer, 2); });
-
-
-                var blocks = sc.Finish();
-
-                TagContainer container2 = new TagContainer();
-                container2.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag5"));
-                foreach (var b in blocks) { container2.AddDataBlock(b); }
-
-                string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized.tagc";
-                using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
-                {
-                    TagContainerWriter.WriteTagContainer(container2, writer);
-                }
+                TagContainerWriter.WriteTagContainer(container, writer);
+            }
+            
+        }
+        static bool AddShape(ContainerBuilder.RootSerializationContext<IPhysicsModel> sc, ICacheContext context, JSONNode node)
+        {
+            Assert.IsNotNull(node, "Could not parse shape");
+            switch (node["Type"])
+            {
+                case "Polyhedron":
+                    return AddPolyhedron(sc, context, node["Data"]);
+                default:
+                    return false;
             }
         }
+
+        static bool AddPolyhedron(ContainerBuilder.RootSerializationContext<IPhysicsModel> sc, ICacheContext context, JSONNode node)
+        {
+            Assert.IsNotNull(node, "Could not parse shape");
+            float friction = node["Friction"].AsFloat;
+            float mass = node["Mass"].AsFloat;
+            float restitution = node["Restitution"].AsFloat;
+            var center = node["Center"].AsArray;
+            var extents = node["Extents"].AsArray;
+
+            int nPlanes = AddManyPlanes(sc, context, node["Planes"]);
+            Assert.Greater(nPlanes, 0, "No planes in polyhedron definition. This is invalid.");
+
+            int nFourVectors = AddManyFourVectors(sc, context, node["Vertices"]);
+            Assert.Greater(nFourVectors, 0, "No vertices in polyhedron definition. This is invalid.");
+
+            var polyhedraSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraTagBlock);
+            polyhedraSc.Add().Serialize((writer, a) => {
+                a.Name.Visit(writer, new StringID(1)); // default
+                //a.Radius.Visit(writer, 0.0164f);
+
+                a.FourVectors.Visit(writer, (UInt32)nFourVectors);
+                a.PlaneEquations.Visit(writer, (UInt32)nPlanes);
+                //a.VertexCount.Visit(writer, 6);
+
+                a.AABBHalfExtents.Visit(writer, new float[] { extents[0].AsFloat, extents[1].AsFloat, extents[2].AsFloat, 0f });
+                a.AABBCenter.Visit(writer, new float[] { center[0].AsFloat, center[1].AsFloat, center[2].AsFloat, 0f });
+
+                //TODO: add to context
+                a.PhantomTypeIndex.Visit(writer, 255);
+            });
+            return true;
+        }
+
+        static int AddManyPlanes(ContainerBuilder.RootSerializationContext<IPhysicsModel> sc, ICacheContext context, JSONNode node)
+        {
+            Assert.IsNotNull(node, "Could not parse polyhedron's planes.");
+            var planesSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraPlaneEquationsTagBlock);
+
+            var planeDefinitions = node.AsArray;
+            foreach (JSONNode p in planeDefinitions)
+            {
+                var planeEquation = p.AsArray;
+                planesSc.Add().Serialize((writer, a) => {
+                    a.PlaneEquation.Visit(writer, new float[] { 
+                        planeEquation[0].AsFloat, 
+                        planeEquation[1].AsFloat, 
+                        planeEquation[2].AsFloat, 
+                        planeEquation[3].AsFloat 
+                    });
+                });
+            }
+
+            return planeDefinitions.Count;
+        }
+
+        static int AddManyFourVectors(ContainerBuilder.RootSerializationContext<IPhysicsModel> sc, ICacheContext context, JSONNode node)
+        {
+            Assert.IsNotNull(node, "Could not parse polyhedron's vertices.");
+
+            var fourVectorSc = sc.GetSerializationContext((phmo) => phmo.PolyhedraFourVectorTagBlock);
+
+            var vertices = node.AsArray;
+            int vertexCount = vertices.Count;
+            UInt32 fourVectorCount = Utils.GetAlignedSize((UInt32)vertexCount, 4)/4;
+            int fullyUsedFourVectorCount = vertices.Count / 4;
+            for (int i = 0; i < fullyUsedFourVectorCount; ++i)
+            {
+                JSONNode v0 = vertices[i * 4];
+                JSONNode v1 = vertices[i * 4 + 1];
+                JSONNode v2 = vertices[i * 4 + 2];
+                JSONNode v3 = vertices[i * 4 + 3];
+
+                fourVectorSc.Add().Serialize((writer, a) => {
+                    a.Xs.Visit(writer, new float[] { v0[0].AsFloat, v1[0].AsFloat, v2[0].AsFloat, v3[0].AsFloat });
+                    a.Ys.Visit(writer, new float[] { v0[1].AsFloat, v1[1].AsFloat, v2[1].AsFloat, v3[1].AsFloat });
+                    a.Zs.Visit(writer, new float[] { v0[2].AsFloat, v1[2].AsFloat, v2[2].AsFloat, v3[2].AsFloat });
+                });
+            }
+
+            if (fullyUsedFourVectorCount != fourVectorCount)
+            {
+                // Add leftovers, pad with the very last vertex to the next multiple of four-vertices.
+                int lastRowBegin = fullyUsedFourVectorCount * 4;
+                JSONNode v0 = vertices[Math.Min(vertexCount-1, lastRowBegin)];
+                JSONNode v1 = vertices[Math.Min(vertexCount-1, lastRowBegin+1)];
+                JSONNode v2 = vertices[Math.Min(vertexCount-1, lastRowBegin+2)];
+                JSONNode v3 = vertices[Math.Min(vertexCount-1, lastRowBegin+3)];
+                fourVectorSc.Add().Serialize((writer, a) => {
+                    a.Xs.Visit(writer, new float[] { v0[0].AsFloat, v1[0].AsFloat, v2[0].AsFloat, v3[0].AsFloat });
+                    a.Ys.Visit(writer, new float[] { v0[1].AsFloat, v1[1].AsFloat, v2[1].AsFloat, v3[1].AsFloat });
+                    a.Zs.Visit(writer, new float[] { v0[2].AsFloat, v1[2].AsFloat, v2[2].AsFloat, v3[2].AsFloat });
+                });
+            }
+
+            return (int)fourVectorCount;
+        }
+
     }
 }

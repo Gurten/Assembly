@@ -45,9 +45,9 @@ namespace TagCollectionParserPrototype.Schema.Phmo
 
     interface IPhysicsModelFourVectors : IStructSchema
     {
-        VectorField<float> Vector0 { get; }
-        VectorField<float> Vector1 { get; }
-        VectorField<float> Vector2 { get; }
+        VectorField<float> Xs { get; }
+        VectorField<float> Ys { get; }
+        VectorField<float> Zs { get; }
     }
 
     interface IPhysicsModelPlaneEquations : IStructSchema

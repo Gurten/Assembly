@@ -80,9 +80,9 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
     {
         UInt32 IStructSchema.Size => 0x30;
         UInt32 IStructSchema.Alignment => 0x10;
-        VectorField<float> IPhysicsModelFourVectors.Vector0 => new VectorField<float>(0, 4);
-        VectorField<float> IPhysicsModelFourVectors.Vector1 => new VectorField<float>(0x10, 4);
-        VectorField<float> IPhysicsModelFourVectors.Vector2 => new VectorField<float>(0x20, 4);
+        VectorField<float> IPhysicsModelFourVectors.Xs => new VectorField<float>(0, 4);
+        VectorField<float> IPhysicsModelFourVectors.Ys => new VectorField<float>(0x10, 4);
+        VectorField<float> IPhysicsModelFourVectors.Zs => new VectorField<float>(0x20, 4);
     }
 
 

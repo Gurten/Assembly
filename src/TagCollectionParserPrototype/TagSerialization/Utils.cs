@@ -86,16 +86,18 @@ namespace TagCollectionParserPrototype.TagSerialization
 
         public static UInt32 GetAlignedSize(IStructSchema schema)
         {
-            UInt32 alignment = schema.Alignment;
-            UInt32 effectiveSize = schema.Size;
+            return GetAlignedSize(schema.Size, schema.Alignment);
+        }
+
+        public static UInt32 GetAlignedSize(UInt32 effectiveSize, UInt32 alignment)
+        {
             UInt32 paddingBytes = 0;
             if (alignment > 0)
             {
                 // Power of 2 check
                 if (!((alignment & (alignment - 1)) == 0))
                 {
-                    throw new InvalidDataException("Alignment for schema "
-                        + schema.GetType().ToString() + " needs to be power of 2.");
+                    throw new InvalidDataException("Alignment needs to be power of 2.");
                 }
                 UInt32 mask = alignment - 1;
                 paddingBytes = (alignment - (effectiveSize & mask)) & mask;

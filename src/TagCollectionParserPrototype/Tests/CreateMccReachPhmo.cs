@@ -156,15 +156,15 @@ namespace TagCollectionParserPrototype.Tests.CreateMccReachPhmo
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
+                        a.Zs.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
+                        a.Zs.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
                     });
 
 
@@ -198,15 +198,15 @@ namespace TagCollectionParserPrototype.Tests.CreateMccReachPhmo
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
+                        a.Zs.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
+                        a.Zs.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
                     });
 
                     polyhedraSc.Add().Serialize((writer, a) => {
@@ -239,15 +239,15 @@ namespace TagCollectionParserPrototype.Tests.CreateMccReachPhmo
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
-                        a.Vector2.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { 0.9835998f, 0.9835998f, 0.9835998f, 0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164001f, -0.8164001f, -0.9835998f, -0.9835998f });
+                        a.Zs.Visit(writer, new float[] { 1.923637f, 0.01640403f, 1.983605f, 0.01640403f });
                     });
 
                     fourVectorSc.Add().Serialize((writer, a) => {
-                        a.Vector0.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
-                        a.Vector1.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
-                        a.Vector2.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
+                        a.Xs.Visit(writer, new float[] { -0.9381537f, -0.9835999f, -0.9835999f, -0.9835999f });
+                        a.Ys.Visit(writer, new float[] { -0.8164002f, -0.9836001f, -0.9836001f, -0.9836001f });
+                        a.Zs.Visit(writer, new float[] { 0.01640439f, 0.01640403f, 0.01640403f, 0.01640403f });
                     });
 
                 }
