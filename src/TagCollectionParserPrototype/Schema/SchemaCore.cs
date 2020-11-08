@@ -2,6 +2,7 @@
 /// Author: Gurten
 using Blamite.IO;
 using System;
+using TagCollectionParserPrototype.TagSerialization;
 
 namespace TagCollectionParserPrototype.Schema.Core
 {

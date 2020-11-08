@@ -20,7 +20,7 @@ namespace TagCollectionParserPrototype.Tests.CreateMccReachPhmo
 {
     class Program
     {
-        static void Main(string[] args)
+        static void Main2(string[] args)
         {
             IPhysicsModel config = new MCCReachPhysicsModel();
             string tagFilePath = @"C:\Users\gurten\Documents\tags\reach\ff_ramp_2x2_steep.tagc";

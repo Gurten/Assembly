@@ -33,7 +33,10 @@ namespace TagCollectionParserPrototype
             var jsonFileRoot = reader.ReadFile();
             Assert.IsNotNull(jsonFileRoot, "Could not parse file.");
             var shapeDefinitions = jsonFileRoot.AsArray;
-            Assert.Greater(shapeDefinitions.Count, 0, "No shapes in json.");
+
+            int jsonShapeCount = shapeDefinitions.Count;
+
+            Assert.Greater(jsonShapeCount, 0, "No shapes in json.");
 
             var sc = ContainerBuilder.CreateSerializationContext(config, context);
 
@@ -50,14 +53,61 @@ namespace TagCollectionParserPrototype
                 a.ParentIndex.Visit(writer, -1);
                 a.SiblingIndex.Visit(writer, -1);
             });
-            
+
+            var rigidBodySc = sc.GetSerializationContext((phmo) => phmo.RigidBodyTagBlock);
+            rigidBodySc.Add().Serialize((writer, a) =>
+            {
+                a.BoundingSphereRadius.Visit(writer, 123f);
+                a.MotionType.Visit(writer, context.Get<IPhysicsModelMotionTypes>().Fixed);
+                a.Mass.Visit(writer, 100f);
+                a.ShapeIndex.Visit(writer, 0);
+
+                var shapeTypeOptions = context.Get<IPhysicsModelShapeTypes>();
+                a.ShapeType.Visit(writer, jsonShapeCount > 1 ?
+                    shapeTypeOptions.List : shapeTypeOptions.Polyhedron);
+
+            });
+
+            if (jsonShapeCount > 1)
+            {
+                //More than one shape, need to make a list-shape to hold them all.
+                var listShapesSc = sc.GetSerializationContext((phmo) => phmo.ListsShapesTagBlock);
+                UInt16 amountAdded = 0;
+                foreach (JSONNode shapeNode in shapeDefinitions)
+                {
+                    bool success = AddShape(sc, context, shapeNode);
+                    Assert.IsTrue(success, "could not add shape: " + shapeNode.ToString());
+
+
+                    listShapesSc.Add().Serialize((writer, a) => {
+                        a.ShapeIndex.Visit(writer, amountAdded);
+                        a.ChildShapeCount.Visit(writer, (UInt16)jsonShapeCount);
+                        a.ShapeType.Visit(writer, context.Get<IPhysicsModelShapeTypes>().Polyhedron);
+                    });
+
+                    ++amountAdded;
+                }
+
+                var listSc = sc.GetSerializationContext((phmo) => phmo.ListsTagBlock);
+                listSc.Add().Serialize((writer, a) => {
+                    //a.AABBHalfExtents.Visit(writer, new float[] { 1f, 1f, 1f, 0.01639998f });
+                    //a.AABBCenter.Visit(writer, new float[] { 0f, 0f, 1f, 1f });
+                    a.ChildShapes.Visit(writer, (UInt32)jsonShapeCount); // put the actual value here.
+                });
+
+            }
+            else
+            {
+                bool success = AddShape(sc, context, shapeDefinitions[0]);
+            }
+
             var blocks = sc.Finish();
 
             TagContainer container = new TagContainer();
             container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag6"));
             foreach (var b in blocks) { container.AddDataBlock(b); }
 
-            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized.tagc";
+            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized6.tagc";
             using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
             {
                 TagContainerWriter.WriteTagContainer(container, writer);
