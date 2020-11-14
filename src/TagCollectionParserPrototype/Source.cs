@@ -62,6 +62,10 @@ namespace TagCollectionParserPrototype
                 a.Mass.Visit(writer, 100f);
                 a.ShapeIndex.Visit(writer, 0);
 
+                var runtimeFlags = context.Get<IPhysicsModelRigidBodyRuntimeFlags>();
+                // Makes things collidable!
+                a.RuntimeFlags.Visit(writer, runtimeFlags.SuperImportantFlag);
+
                 var shapeTypeOptions = context.Get<IPhysicsModelShapeTypes>();
                 a.ShapeType.Visit(writer, jsonShapeCount > 1 ?
                     shapeTypeOptions.List : shapeTypeOptions.Polyhedron);
@@ -104,10 +108,10 @@ namespace TagCollectionParserPrototype
             var blocks = sc.Finish();
 
             TagContainer container = new TagContainer();
-            container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag6"));
+            container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag7"));
             foreach (var b in blocks) { container.AddDataBlock(b); }
 
-            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized6.tagc";
+            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized7.tagc";
             using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
             {
                 TagContainerWriter.WriteTagContainer(container, writer);

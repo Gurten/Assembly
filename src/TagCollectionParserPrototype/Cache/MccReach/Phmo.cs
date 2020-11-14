@@ -18,4 +18,11 @@ namespace TagCollectionParserPrototype.Cache.MccReach.Phmo
 
         ConfigConstant<byte> IPhysicsModelMotionTypes.Fixed => new ConfigConstant<byte>(5);
     }
+
+    public class PhysicsModelRigidBodyRuntimeFlags : IPhysicsModelRigidBodyRuntimeFlags
+    {
+        // Makes things collidable!
+        ConfigConstant<ushort> IPhysicsModelRigidBodyRuntimeFlags.SuperImportantFlag 
+            => new ConfigConstant<ushort>(0x02); // Bit 1
+    }
 }

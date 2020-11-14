@@ -70,6 +70,7 @@ namespace TagCollectionParserPrototype.Schema.Phmo
         DataField<byte> MotionType { get; }
         DataField<UInt16> ShapeType { get; }
         DataField<float> Mass { get; }
+        DataField<UInt16> RuntimeFlags { get; }
         DataField<UInt16> ShapeIndex { get; }
     }
 

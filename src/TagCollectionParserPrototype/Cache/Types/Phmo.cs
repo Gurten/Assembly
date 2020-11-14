@@ -17,4 +17,9 @@ namespace TagCollectionParserPrototype.Cache.Types.Phmo
         ConfigConstant<byte> Keyframed { get; }
         ConfigConstant<byte> Fixed { get; }
     }
+    interface IPhysicsModelRigidBodyRuntimeFlags
+    {
+        //Add more as needed.
+        ConfigConstant<UInt16> SuperImportantFlag { get; }
+    }
 }

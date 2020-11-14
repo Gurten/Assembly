@@ -15,6 +15,9 @@ namespace TagCollectionParserPrototype.Cache.MccReach.Context
         {
             { typeof(IPhysicsModelShapeTypes), new PhysicsModelShapeTypes() },
             { typeof(IPhysicsModelMotionTypes), new PhysicsModelMotionTypes() },
+            { typeof(IPhysicsModelRigidBodyRuntimeFlags), new PhysicsModelRigidBodyRuntimeFlags() },
+
+            
         };
 
         public Blamite.IO.Endian Endian => Endian.LittleEndian;

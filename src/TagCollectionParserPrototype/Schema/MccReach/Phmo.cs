@@ -114,6 +114,7 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         DataField<byte> IPhysicsModelRigidBody.MotionType => new DataField<byte>(0x1c);
         DataField<UInt16> IPhysicsModelRigidBody.ShapeType => new DataField<UInt16>(168);
         DataField<float> IPhysicsModelRigidBody.Mass => new DataField<float>(0xB0);
+        DataField<UInt16> IPhysicsModelRigidBody.RuntimeFlags => new DataField<ushort>(0xBA);
         DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0xAA);
     }
 
