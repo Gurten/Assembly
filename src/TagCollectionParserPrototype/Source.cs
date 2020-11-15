@@ -137,14 +137,20 @@ namespace TagCollectionParserPrototype
 
             var blocks = sc.Finish();
 
-            TagContainer container = new TagContainer();
-            container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag7"));
-            foreach (var b in blocks) { container.AddDataBlock(b); }
-
             string outputPath = args[2];
+            string tagName = outputPath;
             outputPath = outputPath.Replace("/", "\\");
+            int lastPathSepIndex = outputPath.LastIndexOf("\\");
+            if (lastPathSepIndex > 0)
+            {
+                Directory.CreateDirectory(outputPath.Substring(0, lastPathSepIndex));
+                tagName = outputPath.Substring(lastPathSepIndex+1);
+            }
 
-            Directory.CreateDirectory(outputPath.Substring(0, outputPath.LastIndexOf("\\")));
+            tagName = tagName.Replace(".", "_");
+            TagContainer container = new TagContainer();
+            container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), tagName));
+            foreach (var b in blocks) { container.AddDataBlock(b); }
             
             using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
             {
