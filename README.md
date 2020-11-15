@@ -3,7 +3,7 @@
 ### Testbed for a prototype physics model serializer and importer (TagCollectionParserPrototype)
 This is prototype software. You should make backups of your data files before modifying them. 
 
-[<img src="https://i.vimeocdn.com/video/995527560.webp" width="50%">](https://vimeo.com/479641991)
+[<img src="https://i.vimeocdn.com/video/995527560.webp">](https://vimeo.com/479641991)
 
 1. Install the blender plugin from the ./physics directory of this repository.
 2. Use Blender to create physics model geometry. They should be simple, convex models. 
