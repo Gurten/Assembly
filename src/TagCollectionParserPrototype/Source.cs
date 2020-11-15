@@ -17,21 +17,51 @@ using SimpleJSON;
 using AssetReaders.Geometry;
 using NUnit.Framework;
 using TagCollectionParserPrototype.TagSerialization;
+using TagCollectionParserPrototype.Schema.MccHalo3.Phmo;
 
 namespace TagCollectionParserPrototype
 {
     class Program
     {
+        static void PrintUsage()
+        {
+            Console.WriteLine("program <halo3|reach> <path to json> <output path>");
+        }
 
         static void Main(string[] args)
         {
-            IPhysicsModel config = new MCCReachPhysicsModel();
+            IPhysicsModel config = null;
             ICacheContext context = new MCCReachContext();
-
-            string jsonPath = @"C:\Users\gurten\Documents\untitled.json";
+            //Console.WriteLine(args[0]);
+            if (args.Length < 3)
+            {
+                PrintUsage();
+                return;
+            }
+            
+            switch (args[0])
+            {
+                case "halo3":
+                    config = new MCCHalo3PhysicsModel();
+                    break;
+                case "reach":
+                    config = new MCCReachPhysicsModel();
+                    break;
+                default:
+                    PrintUsage();
+                    return;
+            }
+            
+            
+            string jsonPath = args[1];
             BlenderPhmoReader reader = new BlenderPhmoReader(jsonPath);
             var jsonFileRoot = reader.ReadFile();
-            Assert.IsNotNull(jsonFileRoot, "Could not parse file.");
+            if (jsonFileRoot == null)
+            {
+                PrintUsage();
+                return;
+            }
+            Assert.IsNotNull(jsonFileRoot, "Could not parse json file.");
             var shapeDefinitions = jsonFileRoot.AsArray;
 
             int jsonShapeCount = shapeDefinitions.Count;
@@ -58,7 +88,7 @@ namespace TagCollectionParserPrototype
             rigidBodySc.Add().Serialize((writer, a) =>
             {
                 a.BoundingSphereRadius.Visit(writer, 123f);
-                a.MotionType.Visit(writer, context.Get<IPhysicsModelMotionTypes>().Fixed);
+                a.MotionType.Visit(writer, context.Get<IPhysicsModelMotionTypes>().Keyframed);
                 a.Mass.Visit(writer, 100f);
                 a.ShapeIndex.Visit(writer, 0);
 
@@ -111,7 +141,11 @@ namespace TagCollectionParserPrototype
             container.AddTag(new ExtractedTag(new DatumIndex(), 0, CharConstant.FromString("phmo"), "synthesized_tag7"));
             foreach (var b in blocks) { container.AddDataBlock(b); }
 
-            string outputPath = @"C:\Users\gurten\Documents\tags\reach\synthesized7.tagc";
+            string outputPath = args[2];
+            outputPath = outputPath.Replace("/", "\\");
+
+            Directory.CreateDirectory(outputPath.Substring(0, outputPath.LastIndexOf("\\")));
+            
             using (var writer = new EndianWriter(File.Open(outputPath, FileMode.Create, FileAccess.Write), context.Endian))
             {
                 TagContainerWriter.WriteTagContainer(container, writer);
