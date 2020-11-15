@@ -67,7 +67,7 @@ namespace TagCollectionParserPrototype.Schema.Phmo
     interface IPhysicsModelRigidBody : IStructSchema
     {
         DataField<float> BoundingSphereRadius { get; }
-        DataField<byte> MotionType { get; }
+        VectorField<byte> MotionType { get; }
         DataField<UInt16> ShapeType { get; }
         DataField<float> Mass { get; }
         DataField<UInt16> RuntimeFlags { get; }

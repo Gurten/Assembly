@@ -116,6 +116,7 @@
     <Compile Include="Cache\MccReach\Phmo.cs" />
     <Compile Include="Cache\Types\Phmo.cs" />
     <Compile Include="Common\SimpleJson.cs" />
+    <Compile Include="Schema\MccHalo3\Phmo.cs" />
     <Compile Include="Schema\MccReach\Phmo.cs" />
     <Compile Include="Schema\MccReach\SchemaCore.cs" />
     <Compile Include="Schema\Phmo.cs" />

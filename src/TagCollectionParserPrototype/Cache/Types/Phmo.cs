@@ -14,8 +14,8 @@ namespace TagCollectionParserPrototype.Cache.Types.Phmo
 
     interface IPhysicsModelMotionTypes
     {
-        ConfigConstant<byte> Keyframed { get; }
-        ConfigConstant<byte> Fixed { get; }
+        ConfigConstant<UInt16> Keyframed { get; }
+        ConfigConstant<UInt16> Fixed { get; }
     }
     interface IPhysicsModelRigidBodyRuntimeFlags
     {

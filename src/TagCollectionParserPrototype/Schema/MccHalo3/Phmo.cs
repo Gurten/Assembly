@@ -5,22 +5,21 @@ using Blamite.IO;
 using System;
 using TagCollectionParserPrototype.Schema.Core;
 using TagCollectionParserPrototype.Schema.Phmo;
-using NewGenSizeAndCapacityField = TagCollectionParserPrototype.Schema.Core.NewGenSizeAndCapacityField;
 
-namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
+namespace TagCollectionParserPrototype.Schema.MccHalo3.Phmo
 {
-    class MCCReachPhysicsModelMaterial : IPhysicsModelMaterial
+    class MCCHalo3PhysicsModelMaterial : IPhysicsModelMaterial
     {
-        UInt32 IStructSchema.Size => 0x10;
+        UInt32 IStructSchema.Size => 0xC;
         UInt32 IStructSchema.Alignment => 4;
 
         DataField<StringID> IPhysicsModelMaterial.Name => new DataField<StringID>(0);
-        DataField<Int16> IPhysicsModelMaterial.PhantomTypeIndex => new DataField<Int16>(0xc);
+        DataField<Int16> IPhysicsModelMaterial.PhantomTypeIndex => new DataField<Int16>(0x8);
     }
 
-    class MCCReachPhysicsModelPolyhedra : IPhysicsModelPolyhedra, IStructWithDataFixup
+    class MCCHalo3PhysicsModelPolyhedra : IPhysicsModelPolyhedra, IStructWithDataFixup
     {
-        public UInt32 Size => 0xb0;
+        public UInt32 Size => 0xA0;
         UInt32 IStructSchema.Alignment => 0x10;
 
         DataField<Blamite.Blam.StringID> IPhysicsModelPolyhedra.Name
@@ -39,7 +38,7 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
             => new NewGenSizeAndCapacityField(0x78);
         DataField<Int32> IPhysicsModelPolyhedra.VertexCount => new DataField<Int32>(0x80);
         ISizeAndCapacityField IPhysicsModelPolyhedra.PlaneEquations
-            => new NewGenSizeAndCapacityField(0x98);
+            => new NewGenSizeAndCapacityField(0x90);
 
         public void VisitInstance(IWriter writer, uint index)
         {
@@ -48,15 +47,15 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         }
     }
 
-    class MCCReachPhysicsModelLists : IPhysicsModelLists, IStructWithDataFixup
+    class MCCHalo3PhysicsModelLists : IPhysicsModelLists, IStructWithDataFixup
     {
-        UInt32 IStructSchema.Size => 0x90;
+        UInt32 IStructSchema.Size => 96;
         UInt32 IStructSchema.Alignment => 0x10;
 
         public DataField<uint> Count => new DataField<uint>(0xA);
         ISizeAndCapacityField IPhysicsModelLists.ChildShapes => new NewGenSizeAndCapacityField(0x38);
-        VectorField<float> IPhysicsModelLists.AABBHalfExtents => new VectorField<float>(0x50, 4);
-        VectorField<float> IPhysicsModelLists.AABBCenter => new VectorField<float>(0x60, 4);
+        VectorField<float> IPhysicsModelLists.AABBHalfExtents => new VectorField<float>(0x40, 4);
+        VectorField<float> IPhysicsModelLists.AABBCenter => new VectorField<float>(0x50, 4);
 
         void IStructWithDataFixup.VisitInstance(IWriter writer, uint index)
         {
@@ -64,7 +63,7 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         }
     }
 
-    class MCCReachPhysicsModelListShapes : IPhysicsModelListShapes
+    class MCCHalo3PhysicsModelListShapes : IPhysicsModelListShapes
     {
         UInt32 IStructSchema.Size => 0x20;
         UInt32 IStructSchema.Alignment => 0x4;
@@ -73,6 +72,8 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         DataField<ushort> IPhysicsModelListShapes.ShapeIndex => new DataField<UInt16>(2);
         DataField<ushort> IPhysicsModelListShapes.ChildShapeCount => new DataField<UInt16>(0x10);
     }
+
+
 
     class PhysicsModelFourVectors : IPhysicsModelFourVectors
     {
@@ -83,12 +84,14 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         VectorField<float> IPhysicsModelFourVectors.Zs => new VectorField<float>(0x20, 4);
     }
 
+
     class PhysicsModelPlaneEquations : IPhysicsModelPlaneEquations
     {
         UInt32 IStructSchema.Size => 0x10;
         UInt32 IStructSchema.Alignment => 0x10;
         VectorField<float> IPhysicsModelPlaneEquations.PlaneEquation => new VectorField<float>(0, 4);
     }
+
     class PhysicsModelNode : IPhysicsModelNode
     {
         UInt32 IStructSchema.Size => 0xC;
@@ -100,40 +103,44 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Phmo
         DataField<Int16> IPhysicsModelNode.SiblingIndex => new DataField<Int16>(8);
         DataField<Int16> IPhysicsModelNode.ChildIndex => new DataField<Int16>(10);
     }
-    class MCCReachPhysicsModelRigidBody : IPhysicsModelRigidBody
-    {
-        UInt32 IStructSchema.Size => 208;
-        UInt32 IStructSchema.Alignment => 4;
 
-        DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius => new DataField<float>(20);
-        VectorField<byte> IPhysicsModelRigidBody.MotionType => new VectorField<byte>(0x1c, 1);
-        DataField<UInt16> IPhysicsModelRigidBody.ShapeType => new DataField<UInt16>(168);
-        DataField<float> IPhysicsModelRigidBody.Mass => new DataField<float>(0xB0);
-        DataField<UInt16> IPhysicsModelRigidBody.RuntimeFlags => new DataField<ushort>(0xBA);
-        DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0xAA);
+    class MCCHalo3PhysicsModelRigidBody : IPhysicsModelRigidBody
+    {
+        UInt32 IStructSchema.Size => 0xc0;
+        UInt32 IStructSchema.Alignment => 0x10;
+
+        DataField<float> IPhysicsModelRigidBody.BoundingSphereRadius 
+            => new DataField<float>(0x14);
+        VectorField<byte> IPhysicsModelRigidBody.MotionType 
+            => new VectorField<byte>(0x1a, 2);
+        DataField<UInt16> IPhysicsModelRigidBody.ShapeType => new DataField<UInt16>(0x58);
+        DataField<UInt16> IPhysicsModelRigidBody.ShapeIndex => new DataField<UInt16>(0x5A);
+        DataField<float> IPhysicsModelRigidBody.Mass => new DataField<float>(0x60);
+        DataField<UInt16> IPhysicsModelRigidBody.RuntimeFlags => new DataField<UInt16>(0xBE);
+        
     }
 
-    class MCCReachPhysicsModel : IPhysicsModel
+    class MCCHalo3PhysicsModel : IPhysicsModel
     {
-        UInt32 IStructSchema.Size => 412;
+        UInt32 IStructSchema.Size => 0x198;
         UInt32 IStructSchema.Alignment => 4;
 
         ITagBlockRef<IPhysicsModelRigidBody> IPhysicsModel.RigidBodyTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelRigidBody>(92, new MCCReachPhysicsModelRigidBody());
+            => new NewGenTagBlockRef<IPhysicsModelRigidBody>(0x58, new MCCHalo3PhysicsModelRigidBody());
         ITagBlockRef<IPhysicsModelMaterial> IPhysicsModel.MaterialsTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelMaterial>(0x68, new MCCReachPhysicsModelMaterial());
+            => new NewGenTagBlockRef<IPhysicsModelMaterial>(0x64, new MCCHalo3PhysicsModelMaterial());
         ITagBlockRef<IPhysicsModelPolyhedra> IPhysicsModel.PolyhedraTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelPolyhedra>(0xb0, new MCCReachPhysicsModelPolyhedra());
+            => new NewGenTagBlockRef<IPhysicsModelPolyhedra>(0xac, new MCCHalo3PhysicsModelPolyhedra());
         ITagBlockRef<IPhysicsModelFourVectors> IPhysicsModel.PolyhedraFourVectorTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelFourVectors>(0xbc, new PhysicsModelFourVectors());
+            => new NewGenTagBlockRef<IPhysicsModelFourVectors>(0xb8, new PhysicsModelFourVectors());
         ITagBlockRef<IPhysicsModelPlaneEquations> IPhysicsModel.PolyhedraPlaneEquationsTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelPlaneEquations>(0xc8, new PhysicsModelPlaneEquations());
+            => new NewGenTagBlockRef<IPhysicsModelPlaneEquations>(0xc4, new PhysicsModelPlaneEquations());
         ITagBlockRef<IPhysicsModelLists> IPhysicsModel.ListsTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelLists>(0xe0, new MCCReachPhysicsModelLists());
+            => new NewGenTagBlockRef<IPhysicsModelLists>(0xdc, new MCCHalo3PhysicsModelLists());
         ITagBlockRef<IPhysicsModelListShapes> IPhysicsModel.ListsShapesTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelListShapes>(0xec, new MCCReachPhysicsModelListShapes());
+            => new NewGenTagBlockRef<IPhysicsModelListShapes>(0xe8, new MCCHalo3PhysicsModelListShapes());
         //ITagBlockRef<IPhysicsModelListShapes> IPhysicsModel.RegionsTagBlock => throw new NotImplementedException();
         ITagBlockRef<IPhysicsModelNode> IPhysicsModel.NodesTagBlock
-            => new NewGenTagBlockRef<IPhysicsModelNode>(0x13c, new PhysicsModelNode());
+            => new NewGenTagBlockRef<IPhysicsModelNode>(0x138, new PhysicsModelNode());
     }
 }

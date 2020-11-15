@@ -14,15 +14,15 @@ namespace TagCollectionParserPrototype.Cache.MccReach.Phmo
 
     public class PhysicsModelMotionTypes : IPhysicsModelMotionTypes
     {
-        ConfigConstant<byte> IPhysicsModelMotionTypes.Keyframed => new ConfigConstant<byte>(4);
+        ConfigConstant<UInt16> IPhysicsModelMotionTypes.Keyframed => new ConfigConstant<UInt16>(4);
 
-        ConfigConstant<byte> IPhysicsModelMotionTypes.Fixed => new ConfigConstant<byte>(5);
+        ConfigConstant<UInt16> IPhysicsModelMotionTypes.Fixed => new ConfigConstant<UInt16>(5);
     }
 
     public class PhysicsModelRigidBodyRuntimeFlags : IPhysicsModelRigidBodyRuntimeFlags
     {
         // Makes things collidable!
-        ConfigConstant<ushort> IPhysicsModelRigidBodyRuntimeFlags.SuperImportantFlag 
-            => new ConfigConstant<ushort>(0x02); // Bit 1
+        ConfigConstant<UInt16> IPhysicsModelRigidBodyRuntimeFlags.SuperImportantFlag 
+            => new ConfigConstant<UInt16>(0x02); // Bit 1
     }
 }

@@ -2,10 +2,59 @@
 /// Author: Gurten
 using Blamite.IO;
 using System;
+using System.IO;
+using TagCollectionParserPrototype.Cache.Core;
 using TagCollectionParserPrototype.TagSerialization;
 
 namespace TagCollectionParserPrototype.Schema.Core
 {
+    /// <summary>
+    /// Grouping of size and capacity.
+    /// 
+    /// Decided to group these because capacity is often size + 0x80000000 in practice.
+    /// </summary>
+    public struct NewGenSizeAndCapacityField : ISizeAndCapacityField
+    {
+        public NewGenSizeAndCapacityField(UInt32 baseOffsetInParent)
+        {
+            _baseOffsetInParent = baseOffsetInParent;
+        }
+
+        private UInt32 _baseOffsetInParent;
+
+        public DataField<UInt32> Size => new DataField<UInt32>(_baseOffsetInParent);
+        public DataField<UInt32> Capacity => new DataField<UInt32>(_baseOffsetInParent + 4);
+
+        public bool Visit(IWriter buffer, uint value)
+        {
+            const uint valueAdjustment = 0x80000000;
+            return Size.Visit(buffer, value) && Capacity.Visit(buffer, value | valueAdjustment);
+        }
+
+        public UInt32 Visit(IReader buffer)
+        {
+            buffer.SeekTo(Size.Offset);
+            return Utils.ReadField<UInt32>(buffer);
+        }
+
+    }
+
+    public struct NewGenTagBlockRef<T> : ITagBlockRef<T>
+    {
+        public NewGenTagBlockRef(UInt32 offsetInParent, T schema)
+        {
+            Schema = schema;
+            _offsetInParent = offsetInParent;
+        }
+
+        private readonly UInt32 _offsetInParent;
+        public DataField<UInt32> Count => new DataField<UInt32>(_offsetInParent + 0);
+
+        public DataField<UInt32> Address => new DataField<UInt32>(_offsetInParent + 4);
+
+        public T Schema { get; set; }
+    }
+
     public interface IStructSchema
     {
         UInt32 Size { get; }
@@ -51,13 +100,20 @@ namespace TagCollectionParserPrototype.Schema.Core
         }
     }
 
-    public struct VectorField<T> : IDataField<T[]> where T : struct
+    public interface IVectorField<T> : IDataField<T[]> where T : struct
+    {
+        void Visit<U>(IWriter buffer, ConfigConstant<U> constant) where U : struct;
+    }
+
+    public struct VectorField<T> : IVectorField<T> where T : struct
     {
         public VectorField(UInt32 baseOffsetInParent, UInt32 length)
         {
             _baseOffsetInParent = baseOffsetInParent;
             Length = length;
         }
+
+        
 
         private UInt32 _baseOffsetInParent;
 
@@ -88,6 +144,42 @@ namespace TagCollectionParserPrototype.Schema.Core
             }
 
             return output;
+        }
+
+        public void Visit<U>(IWriter buffer, ConfigConstant<U> constant) where U : struct
+        {
+            UInt32 uByteCount = Utils.FieldSizeBytes(constant.Value);
+            UInt32 thisFieldByteCount = Utils.FieldSizeBytes(default(T)) * Length;
+            buffer.SeekTo(this[0].Offset);
+
+            if (thisFieldByteCount < uByteCount)
+            {
+                UInt32 sizeMismatchByteCount = uByteCount - thisFieldByteCount;
+                byte[] patch = new byte[uByteCount];
+                var patchBuffer = new EndianWriter(new MemoryStream(patch), buffer.Endianness);
+                Utils.WriteField(patchBuffer, constant.Value);
+                UInt32 beginReadingOffset 
+                    = buffer.Endianness==Endian.LittleEndian? 
+                    0 : sizeMismatchByteCount;
+                // Begin writing where we'll discard the most-significant bytes. 
+                // These should just be padding anyway, but we check to be sure.
+                buffer.WriteBlock(patch, (int)beginReadingOffset, (int)thisFieldByteCount);
+                for (UInt32 i = 0; i < sizeMismatchByteCount; ++i)
+                {
+                    UInt32 excessByteIndex = (i + beginReadingOffset + thisFieldByteCount) 
+                        % uByteCount;
+                    byte b = patch[(int)excessByteIndex];
+                    if (b != 0)
+                    {
+                        throw new OverflowException("Written data truncated. byte " 
+                            + b + " in " + constant.Value);
+                    }
+                }
+            }
+            else
+            {
+                Utils.WriteField(buffer, constant.Value);
+            }
         }
 
         public DataField<T> this[UInt32 i]

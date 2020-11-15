@@ -62,10 +62,11 @@ namespace TagCollectionParserPrototype.TagSerialization
             Action<IWriter, object> writer;
             if (_typeWriters.TryGetValue(typeof(T), out writer))
             {
-                writer.Invoke(buffer, (object)v);
+                writer.Invoke(buffer, v);
                 return;
             }
-            throw new NotImplementedException();
+            throw new NotImplementedException(
+                v.GetType().ToString() + " cannot be serialized.");
         }
 
         public static T ReadField<T>(IReader buffer) where T : struct
