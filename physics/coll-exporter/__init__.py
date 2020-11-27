@@ -22,6 +22,13 @@ import bpy, os, subprocess, tempfile
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import StringProperty, BoolProperty
 
+class CachedMaterials:
+    
+    def __init__(self, serialized_text, material_dictionary):
+        self.serialized_text = serialized_text
+        self.material_dictionary = material_dictionary
+
+
 class Export(bpy.types.Operator, ExportHelper):
     bl_idname = "export.haloce_coll"
     bl_label = "Export"
@@ -64,9 +71,9 @@ class Export(bpy.types.Operator, ExportHelper):
             material_texture = "<none>"
             out += ("%s\n%s\n" % (material_name, material_texture))
             
-        return out
+        return CachedMaterials(out, materials_d)
     
-    def serialise_model_to_jms(self, context, obj, serialized_materials_text):
+    def serialise_model_to_jms(self, context, obj, material_cache):
         """JMS serialisation for the model.
         
         The tool.exe utility works with JMS files.
@@ -88,7 +95,7 @@ class Export(bpy.types.Operator, ExportHelper):
             node_vals = [i for l in node_vals for i in l]
             out+= ("%s\n%d\n%d\n%f\t%f\t%f\t%f\n%f\t%f\t%f\n" % tuple(node_vals))
         
-        out += serialized_materials_text
+        out += material_cache.serialized_text
         
         # Markers
         n_markers = 0
@@ -126,7 +133,7 @@ class Export(bpy.types.Operator, ExportHelper):
             face_material_idx = f.material_index
             if len(obj.data.materials) is not 0: # Occurs when a face has a material assigned
                 # get the global material list index
-                face_material_idx = materials_d[obj.data.materials[face_material_idx].name]
+                face_material_idx = material_cache.material_dictionary[obj.data.materials[face_material_idx].name]
             
             for i in range(len(face_vert_indices)-2):
                 face_data.append([[face_unknown, face_material_idx], (face_vert_indices[0], face_vert_indices[i+1], face_vert_indices[i+2])]) 
@@ -166,7 +173,7 @@ class Export(bpy.types.Operator, ExportHelper):
         output = subprocess.check_output(commands, cwd=tmpdir_path)
         return output.decode()
     
-    def highlight_errors_of_object(self, context, ob):
+    def highlight_errors_of_object(self, context, ob, degenerate_edge_indices):
         # put the troubled object in edit-mode with the edges selected
         bpy.ops.object.select_all(action='DESELECT')
         ob.select_set(True)
@@ -184,7 +191,7 @@ class Export(bpy.types.Operator, ExportHelper):
         
         raise Exception("Object %s could not be exported. See console for details." % ob.name)
     
-    def export_one_model_as_jms(self, context, ob, tmpdir_path, model_name, instance_name, material_text):
+    def export_one_model_as_jms(self, context, ob, tmpdir_path, model_name, instance_name, material_cache):
         """Exports one object
         
         args:
@@ -192,10 +199,10 @@ class Export(bpy.types.Operator, ExportHelper):
             tmpdir_path: path to the tmpdir. Expects child-dirs 'data' and 'tags' have already been created.
             model_name: model name - this is a halo data organization concept.
             instance_name: the instance name - this is a halo data organization concept.
-            material_text: the pre-organized material section of the JMS file. Consistent among all models.
+            material_cache: the pre-organized material cache among all models
         """
         #Export.filename_ext
-        out = self.serialise_model_to_jms(context, ob, material_text)
+        out = self.serialise_model_to_jms(context, ob, material_cache)
         # Write the JMS into a temporary Tool working-directory.
         export_dir = os.path.join(tmpdir_path, "data", model_name, instance_name, "physics")
         os.makedirs(export_dir)
@@ -205,8 +212,8 @@ class Export(bpy.types.Operator, ExportHelper):
         f.close()
         return export_path
     
-    def generate_one_model(self, context, ob, tmpdir_path, model_name, instance_name, material_text):
-        self.export_one_model_as_jms(context, ob, tmpdir_path, model_name, instance_name, material_text)
+    def generate_one_model(self, context, ob, tmpdir_path, model_name, instance_name, material_cache):
+        self.export_one_model_as_jms(context, ob, tmpdir_path, model_name, instance_name, material_cache)
         output = self.invoke_tool_for_jms(tmpdir_path, model_name, instance_name)
         #check output
         print("Log of exporting %s:" % ob.name)
@@ -222,7 +229,7 @@ class Export(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         n_objs_exported = 0
         objs = self.detect_export_objects(context)
-        material_text = self.serialize_materials(objs)
+        material_cache = self.serialize_materials(objs)
         tmpdir = self.generate_tool_tmpdir()
         fpath = self.filepath
         fname = fpath[(fpath.rfind('\\')+1):].split(self.filename_ext)[0]
@@ -230,12 +237,12 @@ class Export(bpy.types.Operator, ExportHelper):
         if len(objs) > 1:
             for i,obj in enumerate(objs):
                 ifname = ("%s%03d" % (fname, i))
-                self.generate_one_model(context, obj, tmpdir.name, fname, ifname, material_text)
+                self.generate_one_model(context, obj, tmpdir.name, fname, ifname, material_cache)
                 n_objs_exported += 1
 
             print("Successfully exported %d objects to \'%s\'." % (n_objs_exported, self.filepath))
         else:
-            self.generate_one_model(context, objs[0], tmpdir.name, fname, fname, material_text)
+            self.generate_one_model(context, objs[0], tmpdir.name, fname, fname, material_cache)
             print("Successfully exported %d objects to \'%s\'." % (1, self.filepath))
         
         return {'FINISHED'}

@@ -111,6 +111,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssetReaders\BlenderPhmoReader.cs" />
+    <Compile Include="AssetReaders\HaloCEModelCollisionGeometryReader.cs" />
     <Compile Include="Cache\Core.cs" />
     <Compile Include="Cache\MccReach\Context.cs" />
     <Compile Include="Cache\MccReach\Phmo.cs" />

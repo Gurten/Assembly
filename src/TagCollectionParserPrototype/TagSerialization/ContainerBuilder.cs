@@ -68,6 +68,7 @@ namespace TagCollectionParserPrototype.TagSerialization.ContainerBuilder
             {
                 _instanceIndex = instanceIndex;
                 _schema = schema;
+                this.builder = builder;
                 _backingData = new byte[schema.Size];
                 Reader = new EndianReader(new MemoryStream(_backingData, 0, _backingData.Length, false), builder.context.Endian);
                 Writer = new EndianWriter(new MemoryStream(_backingData, 0, _backingData.Length, true), builder.context.Endian);
@@ -168,7 +169,13 @@ namespace TagCollectionParserPrototype.TagSerialization.ContainerBuilder
             }
         }
 
-        public class RootSerializationContext<U> : InstanceSerializationContext<U> where U : IStructSchema, ITagRoot
+        public interface IRootSerializationContext
+        {
+            DataBlock[] Finish();
+        }
+
+        public class RootSerializationContext<U> : InstanceSerializationContext<U>, 
+            IRootSerializationContext where U : IStructSchema, ITagRoot
         {
             public RootSerializationContext(U schema, ContainerBuilder builder) : base(schema, builder, 0)
             {
@@ -177,19 +184,21 @@ namespace TagCollectionParserPrototype.TagSerialization.ContainerBuilder
 
             public DataBlock[] Finish()
             {
-                var result = new DataBlock[builder.blocks.Count];
-                int index = 0;
+                var result = new List<DataBlock>(builder.blocks.Count);
                 foreach (KeyValuePair<UInt32, IBlockSerializationContext> item in builder.blocks)
                 {
-                    result[index] = FlattenInstances(item.Key, item.Value.Instances);
-                    ++index;
+                    if (item.Value.Instances.Count <= 0)
+                    {
+                        continue;
+                    }
+                    result.Add(builder.FlattenInstances(item.Key, item.Value.Instances));
                 }
-                return result;
+                return result.ToArray();
             }
 
         }
 
-        public static DataBlock FlattenInstances(UInt32 originalAddress,
+        public DataBlock FlattenInstances(UInt32 originalAddress,
             List<IInstanceSerializationContext> instances)
         {
             UInt32 alignedSize = Utils.GetAlignedSize(instances[0].Schema);
@@ -212,8 +221,19 @@ namespace TagCollectionParserPrototype.TagSerialization.ContainerBuilder
 
             var result = new DataBlock(originalAddress, instances.Count,
                 (int)instances[0].Schema.Alignment, false, backingData);
+            result.AddressFixups.Capacity = allAddressFixupsFromInstances.Count;
             foreach (var fixup in allAddressFixupsFromInstances)
-            { result.AddressFixups.Add(fixup); }
+            {
+                if (!blocks.ContainsKey(fixup.OriginalAddress) 
+                    || blocks[fixup.OriginalAddress].Instances.Count <= 0)
+                {
+                    // Detects references to non-existent tagblocks. This could happen if 
+                    // if you create a serialization-context, but end up not adding any 
+                    // instances.
+                    continue;
+                }
+                result.AddressFixups.Add(fixup); 
+            }
 
             return result;
         }

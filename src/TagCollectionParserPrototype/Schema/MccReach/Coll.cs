@@ -114,6 +114,8 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Coll
 
                     DataField<Int16> ILeafNode.BSP2DReferenceCount => new DataField<Int16>(2);
 
+                    DataField<Int16> ILeafNode.Unknown => new DataField<Int16>(4);
+
                     DataField<Int16> ILeafNode.FirstBSP2DReference => new DataField<Int16>(6);
 
                     uint IStructSchema.Size => 8;
@@ -155,6 +157,7 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Coll
                     DataField<Int16> ISurface.MaterialIndex => new DataField<Int16>(4);
 
                     DataField<Int16> ISurface.BreakableSurface => new DataField<Int16>(8);
+                    DataField<UInt16> ISurface.Flags => new DataField<UInt16>(0xa);
 
                     uint IStructSchema.Size => 0xc;
 
@@ -184,7 +187,7 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Coll
                 {
                     VectorField<float> IVertex.PointXYZ => new VectorField<float>(0, 3);
 
-                    DataField<Int16> IVertex.FirstEdge => new DataField<Int16>(0xc);
+                    DataField<Int16> IVertex.FirstEdgeIndex => new DataField<Int16>(0xc);
 
                     uint IStructSchema.Size => 0x10;
 
@@ -193,6 +196,21 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Coll
             }
 		}
 	}
+
+    class PathFindingSphere : IPathFindingSphere
+    {
+        DataField<Int16> IPathFindingSphere.NodeIndex => new DataField<Int16>(0);
+
+        DataField<UInt16> IPathFindingSphere.Flags => new DataField<UInt16>(2);
+
+        VectorField<float> IPathFindingSphere.SphereLocation => new VectorField<float>(4, 3);
+
+        DataField<float> IPathFindingSphere.SphereRadius => new DataField<float>(0x10);
+
+        uint IStructSchema.Size => 0x14;
+
+        uint IStructSchema.Alignment => 4;
+    }
 
     class Node : INode
     {
@@ -212,13 +230,16 @@ namespace TagCollectionParserPrototype.Schema.MccReach.Coll
     }
 
 
-    class CollisionModel : ICollisionModel
+    class MCCReachCollisionModel : ICollisionModel
     {
         ITagBlockRef<IMaterial> ICollisionModel.Materials
             => new NewGenTagBlockRef<IMaterial>(0x14, new Material());
 
         ITagBlockRef<IRegion> ICollisionModel.Regions 
             => new NewGenTagBlockRef<IRegion>(0x20, new Region());
+
+        ITagBlockRef<IPathFindingSphere> ICollisionModel.PathFindingSpheres
+            => new NewGenTagBlockRef<IPathFindingSphere>(0x38, new PathFindingSphere());
 
         ITagBlockRef<INode> ICollisionModel.Nodes 
             => new NewGenTagBlockRef<INode>(0x44, new Node());

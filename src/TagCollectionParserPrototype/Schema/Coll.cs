@@ -59,6 +59,7 @@ namespace TagCollectionParserPrototype.Schema.Coll
 				{
 					DataField<Int16> Flags { get; }
 					DataField<Int16> BSP2DReferenceCount { get; }
+					DataField<Int16> Unknown { get; }
 					DataField<Int16> FirstBSP2DReference { get; }
 				}
 
@@ -84,6 +85,7 @@ namespace TagCollectionParserPrototype.Schema.Coll
 					DataField<Int16> FirstEdgeIndex { get; }
 					DataField<Int16> MaterialIndex { get; }
 					DataField<Int16> BreakableSurface { get; }
+					DataField<UInt16> Flags { get; }
 				}
 
 				interface IEdge : IStructSchema
@@ -99,11 +101,19 @@ namespace TagCollectionParserPrototype.Schema.Coll
 				interface IVertex : IStructSchema
 				{
 					VectorField<float> PointXYZ { get; }
-					DataField<Int16> FirstEdge { get; }
+					DataField<Int16> FirstEdgeIndex { get; }
 				}
 			}
         }
     }
+
+	interface IPathFindingSphere : IStructSchema
+	{
+		DataField<Int16> NodeIndex { get; }
+		DataField<UInt16> Flags { get; }
+		VectorField<float> SphereLocation { get; }
+		DataField<float> SphereRadius { get;  }
+	}
 
 	interface INode : IStructSchema 
 	{
@@ -119,6 +129,7 @@ namespace TagCollectionParserPrototype.Schema.Coll
     {
         ITagBlockRef<IMaterial> Materials { get; }
         ITagBlockRef<IRegion> Regions { get; }
+		ITagBlockRef<IPathFindingSphere> PathFindingSpheres { get; }
 		ITagBlockRef<INode> Nodes { get; }
 	}
 
