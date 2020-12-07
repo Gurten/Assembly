@@ -31,9 +31,11 @@ using CloseableTabItemDemo;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 using XBDMCommunicator;
+using Blamite.Blam.SecondGen;
 using Blamite.Blam.ThirdGen;
 using Blamite.RTE.ThirdGen;
 using Blamite.Blam.Resources.Sounds;
+using System.Reflection;
 
 namespace Assembly.Metro.Controls.PageTemplates.Games
 {
@@ -104,7 +106,6 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			cbShowBookmarkedTagsOnly.IsChecked = App.AssemblyStorage.AssemblySettings.HalomapOnlyShowBookmarkedTags;
 			cbOpenDuplicate.IsChecked = App.AssemblyStorage.AssemblySettings.AutoOpenDuplicates;
 			cbTabOpenMode.SelectedIndex = (int) App.AssemblyStorage.AssemblySettings.HalomapTagOpenMode;
-			cbShowHSInfo.IsChecked = App.AssemblyStorage.AssemblySettings.ShowScriptInfo;
 
 			App.AssemblyStorage.AssemblySettings.PropertyChanged += SettingsChanged;
 
@@ -154,12 +155,12 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			{
 				var reader = new EndianReader(fileStream, Endian.BigEndian);
 		#if DEBUG
-				_cacheFile = CacheFileLoader.LoadCacheFile(reader, App.AssemblyStorage.AssemblySettings.DefaultDatabase,
+				_cacheFile = CacheFileLoader.LoadCacheFile(reader, Path.GetFileName(_cacheLocation), App.AssemblyStorage.AssemblySettings.DefaultDatabase,
 					out _buildInfo);
 		#else
 				try
 				{
-					_cacheFile = CacheFileLoader.LoadCacheFile(reader, App.AssemblyStorage.AssemblySettings.DefaultDatabase,
+					_cacheFile = CacheFileLoader.LoadCacheFile(reader, Path.GetFileName(_cacheLocation), App.AssemblyStorage.AssemblySettings.DefaultDatabase,
 						out _buildInfo);
 				}
 				catch (Exception ex)
@@ -368,11 +369,13 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			if (_cacheFile.Resources == null)
 				Dispatcher.Invoke(new Action(() => btnImport.IsEnabled = false));
 
-			// Hide import/save name buttons if the cache file isn't thirdgen
+			// Hide import button if the cache file isn't thirdgen
 			if (_cacheFile.Engine != EngineType.ThirdGeneration)
-				Dispatcher.Invoke(new Action(() => { btnImport.Visibility = Visibility.Collapsed;
-					menuSaveTagNames.Visibility = Visibility.Collapsed; }));
-				
+				Dispatcher.Invoke(new Action(() => btnImport.Visibility = Visibility.Collapsed));
+
+			// Hide save name button if the cache file isn't secondgen or thirdgen
+			if (_cacheFile.Engine < EngineType.SecondGeneration)
+				Dispatcher.Invoke(new Action(() => menuSaveTagNames.Visibility = Visibility.Collapsed));
 
 			_tagEntries = _cacheFile.Tags.Select(WrapTag).ToList();
 			_allTags = BuildTagHierarchy(
@@ -487,7 +490,7 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 				));
 		}
 
-		private void HeaderValueData_MouseDown(object sender, MouseButtonEventArgs e)
+        private void HeaderValueData_MouseDown(object sender, MouseButtonEventArgs e)
 		{
 			if (e.ClickCount == 2)
 				Clipboard.SetText(((TextBlock) e.OriginalSource).Text);
@@ -603,11 +606,6 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			}
 		}
 
-		private void cbShowHSInfo_Altered(object sender, RoutedEventArgs e)
-		{
-			App.AssemblyStorage.AssemblySettings.ShowScriptInfo = cbShowHSInfo.IsChecked;
-		}
-
 		private void ScriptButtonClick(object sender, RoutedEventArgs e)
 		{
 			var elem = e.Source as FrameworkElement;
@@ -622,14 +620,14 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			}
 			else
 			{
-				var tab = new CloseableTabItem
-				{
-					Header = new ContentControl
-					{
-						Content = tabName,
-						ContextMenu = BaseContextMenu
-					},
-					Content = new ScriptEditor(_buildInfo, script, _mapManager, _cacheFile.Endianness)
+                var tab = new CloseableTabItem
+                {
+                    Header = new ContentControl
+                    {
+                        Content = tabName,
+                        ContextMenu = BaseContextMenu
+                    },
+                    Content = new ScriptEditor(_buildInfo, script, _mapManager, _cacheFile, _cacheFile.Endianness)
 				};
 
 				contentTabs.Items.Add(tab);
@@ -1114,9 +1112,8 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 											return null;
 										}
 
-										resourceStream =
-											File.OpenRead(resourceCachePath);
-										resourceFile = new ThirdGenCacheFile(new EndianReader(resourceStream, _cacheFile.Endianness), _buildInfo,
+										resourceStream = File.OpenRead(resourceCachePath);
+										resourceFile = new ThirdGenCacheFile(new EndianReader(resourceStream, _cacheFile.Endianness), _buildInfo, Path.GetFileName(_cacheLocation),
 											_cacheFile.BuildString);
 									}
 
@@ -1344,10 +1341,77 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 				var _zonesets = _cacheFile.Resources.LoadZoneSets(stream);
 
 				foreach (ExtractedTag et in container.Tags)
+				{
+					//add to global and remove from the rest
 					_zonesets.GlobalZoneSet.ActivateTag(et.OriginalIndex, true);
 
+					_zonesets.UnattachedZoneSet?.ActivateTag(et.OriginalIndex, false);
+					_zonesets.DiscForbiddenZoneSet?.ActivateTag(et.OriginalIndex, false);
+					_zonesets.DiscAlwaysStreamingZoneSet?.ActivateTag(et.OriginalIndex, false);
+					_zonesets.RequiredMapVariantsZoneSet?.ActivateTag(et.OriginalIndex, false);
+					_zonesets.SandboxMapVariantsZoneSet?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.GeneralZoneSets != null)
+						foreach (var set in _zonesets.GeneralZoneSets)
+							set?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets != null)
+						foreach (var set in _zonesets.BSPZoneSets)
+							set?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets2 != null)
+						foreach (var set in _zonesets.BSPZoneSets2)
+							set?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets3 != null)
+						foreach (var set in _zonesets.BSPZoneSets3)
+							set?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.CinematicZoneSets != null)
+						foreach (var set in _zonesets.CinematicZoneSets)
+							set?.ActivateTag(et.OriginalIndex, false);
+
+					if (_zonesets.ScenarioZoneSets != null)
+						foreach (var set in _zonesets.ScenarioZoneSets)
+							set?.ActivateTag(et.OriginalIndex, false);
+				}
+					
+
 				foreach (ExtractedResourceInfo eri in container.Resources)
+				{
+					//add to global and remove from the rest
 					_zonesets.GlobalZoneSet.ActivateResource(eri.OriginalIndex, true);
+
+					_zonesets.UnattachedZoneSet?.ActivateResource(eri.OriginalIndex, false);
+					_zonesets.DiscForbiddenZoneSet?.ActivateResource(eri.OriginalIndex, false);
+					_zonesets.DiscAlwaysStreamingZoneSet?.ActivateResource(eri.OriginalIndex, false);
+					_zonesets.RequiredMapVariantsZoneSet?.ActivateResource(eri.OriginalIndex, false);
+					_zonesets.SandboxMapVariantsZoneSet?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.GeneralZoneSets != null)
+						foreach (var set in _zonesets.GeneralZoneSets)
+							set?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets != null)
+						foreach (var set in _zonesets.BSPZoneSets)
+							set?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets2 != null)
+						foreach (var set in _zonesets.BSPZoneSets2)
+							set?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.BSPZoneSets3 != null)
+						foreach (var set in _zonesets.BSPZoneSets3)
+							set?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.CinematicZoneSets != null)
+						foreach (var set in _zonesets.CinematicZoneSets)
+							set?.ActivateResource(eri.OriginalIndex, false);
+
+					if (_zonesets.ScenarioZoneSets != null)
+						foreach (var set in _zonesets.ScenarioZoneSets)
+							set?.ActivateResource(eri.OriginalIndex, false);
+				}
 
 				_zonesets.SaveChanges(stream);
 
@@ -1362,46 +1426,58 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 		{
 			var tagContext = sender as ContextMenu;
 
-			// Check if we need to hide stuff because the cache isn't thirdgen
-			if (_cacheFile.Engine != EngineType.ThirdGeneration)
-				foreach (object tagItem in tagContext.Items)
+			foreach (object tagItem in tagContext.Items)
+			{
+				// Check for particular names/objects to hide because datatemplate
+				if (tagItem is MenuItem)
 				{
-					// Check for particular names/objects to hide because datatemplate
-					if (tagItem is MenuItem)
-					{
-						MenuItem tagMenuItem = tagItem as MenuItem;
-						if (tagMenuItem.Name == "itemRename" ||
-							tagMenuItem.Name == "itemDuplicate" ||
-							tagMenuItem.Name == "itemExtract" ||
-							tagMenuItem.Name == "itemForce" ||
-							tagMenuItem.Name == "itemTagBatch")
-							tagMenuItem.Visibility = Visibility.Collapsed;
-					}
-					if (tagItem is Separator)
-					{
-						Separator tagMenuItem = tagItem as Separator;
-						if (tagMenuItem.Name == "sepTopBookmark")
-							tagMenuItem.Visibility = Visibility.Collapsed;
-					}
+					MenuItem tagMenuItem = tagItem as MenuItem;
+
+					if (tagMenuItem.Name == "itemRename" && _cacheFile.Engine < EngineType.SecondGeneration)
+						tagMenuItem.Visibility = Visibility.Collapsed;
+					else if ((tagMenuItem.Name == "itemDuplicate" ||
+						tagMenuItem.Name == "itemExtract" ||
+						tagMenuItem.Name == "itemForce" ||
+						tagMenuItem.Name == "itemTagBatch")
+						&& _cacheFile.Engine != EngineType.ThirdGeneration)
+						tagMenuItem.Visibility = Visibility.Collapsed;
 				}
+				if (tagItem is Separator)
+				{
+					Separator tagMenuItem = tagItem as Separator;
+					if (tagMenuItem.Name == "sepTopBookmark")
+						tagMenuItem.Visibility = Visibility.Collapsed;
+				}
+			}
 		}
 
 		private void GroupContextMenu_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
 		{
 			var tagContext = sender as ContextMenu;
+			var group = tagContext.DataContext as TagGroup;
 
-			// Check if we need to hide stuff because the cache isn't thirdgen
-			if (_cacheFile.Engine != EngineType.ThirdGeneration)
-				foreach (object tagItem in tagContext.Items)
+
+			foreach (object tagItem in tagContext.Items)
+			{
+				// Check for particular names/objects to hide because datatemplate
+				if (tagItem is MenuItem)
 				{
-					// Check for particular names/objects to hide because datatemplate
-					if (tagItem is MenuItem)
+					MenuItem tagMenuItem = tagItem as MenuItem;
+
+					// Check if we need to hide stuff because the cache isn't thirdgen
+					if (_cacheFile.Engine != EngineType.ThirdGeneration)
 					{
-						MenuItem tagMenuItem = tagItem as MenuItem;
+						
 						if (tagMenuItem.Name == "itemGroupBatch")
 							tagMenuItem.Visibility = Visibility.Collapsed;
 					}
+
+					if(group.TagGroupMagic != "hsc*" && tagMenuItem.Name == "hscItem")
+					{
+						tagMenuItem.Visibility = Visibility.Collapsed;
+					}
 				}
+			}
 		}
 
 		private void SIDButton_Click(object sender, RoutedEventArgs e)
@@ -1457,6 +1533,63 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 				contentTabs.SelectedItem = tab;
 			}
 
+		}
+
+		private void HscItem_Click(object sender, RoutedEventArgs e)
+		{
+			DumpHscs();
+		}
+
+		private void DumpHscs()
+		{
+			var tags = _cacheFile.Tags.FindTagsByGroup("hsc*");
+
+			if (_buildInfo.Layouts.HasLayout("hsc*") && tags != null)
+			{
+				string folder;
+
+				using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+				{
+					System.Windows.Forms.DialogResult result = dialog.ShowDialog();
+					if (result == System.Windows.Forms.DialogResult.OK)
+					{
+						folder = dialog.SelectedPath;
+					}
+					else
+					{
+						return;
+					}
+				}
+
+				foreach (var tag in tags)
+				{
+					string fileName;
+					byte[] data;
+
+					using (IReader reader = _mapManager.OpenRead())
+					{
+						reader.SeekTo(tag.MetaLocation.AsOffset());
+						var values = StructureReader.ReadStructure(reader, _buildInfo.Layouts.GetLayout("hsc*"));
+
+						uint pointer = (uint)values.GetInteger("source pointer");
+						var exp = _cacheFile.PointerExpander.Expand(pointer);
+						var offset = _cacheFile.MetaArea.PointerToOffset(exp);
+						reader.SeekTo(offset);
+						data = reader.ReadBlock((int)values.GetInteger("source size"));
+						fileName = values.GetString("file name") + ".hsc";
+					}
+
+					string path = Path.Combine(folder, fileName);
+
+					File.WriteAllBytes(path, data);
+				}
+
+				MetroMessageBox.Show("All source files have been extracted.");
+			}
+			else
+			{
+				MetroMessageBox.Show("This map doesn't contain hsc files.");
+			}
 		}
 
 		#region Tag List
@@ -1938,6 +2071,18 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 			throw new Exception();
 		}
 
+        public void RefreshTags()
+        {
+            foreach (CloseableTabItem tab in contentTabs.Items)
+            {
+                var meta = tab.Content as MetaContainer;
+                if(meta != null)
+                {
+                    meta.RefreshMetaEditor();
+                }
+            }
+        }
+
 		private void UpdateTagOpenMode()
 		{
 			_tagOpenMode = App.AssemblyStorage.AssemblySettings.HalomapTagOpenMode;
@@ -2171,7 +2316,7 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 
 			if (!_buildInfo.Layouts.HasLayout(bspLayoutName) || !_buildInfo.Layouts.HasLayout(bspInstancedLayoutName))
 			{
-				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required &quot;" + bspLayoutName + "&quot; and &quot;" + bspInstancedLayoutName + "&quot; layouts in the Formats folder. Can not continue.");
+				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required \"" + bspLayoutName + "\" and \"" + bspInstancedLayoutName + "\" layouts in the Formats folder. Can not continue.");
 				return;
 			}
 
@@ -2180,12 +2325,12 @@ namespace Assembly.Metro.Controls.PageTemplates.Games
 
 			if (!sbspLayout.HasField(bspLayoutBlockCountName) || !sbspLayout.HasField(bspLayoutBlockAddrName))
 			{
-				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required &quot;" + bspLayoutBlockCountName + "&quot; and &quot;" + bspLayoutBlockAddrName + "&quot; fields for the &quot;" + bspLayoutName + "&quot; layout in the Formats folder. Can not continue.");
+				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required \"" + bspLayoutBlockCountName + "\" and \"" + bspLayoutBlockAddrName + "\" fields for the \"" + bspLayoutName + "\" layout in the Formats folder. Can not continue.");
 				return;
 			}
 			else if (!sbspLayout.HasField(bspLayoutBlockCountName))
 			{
-				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required &quot;" + bspInstancedLayoutStringIDName + "&quot; field for the &quot;" + sbspInstancedLayout + "&quot; layout in the Formats folder. Can not continue.");
+				MetroMessageBox.Show("Free StringIDs", "This current engine does not contain the required \"" + bspInstancedLayoutStringIDName + "\" field for the \"" + sbspInstancedLayout + "\" layout in the Formats folder. Can not continue.");
 				return;
 			}
 
